@@ -1,0 +1,67 @@
+[
+    {
+        "title": "Mr. Bean - The Ultimate Collection",
+        "description": "A collection of hilarious Mr. Bean episodes.",
+        "filePath": "videos/mr_bean.mp4"
+    },
+    {
+        "title": "โน๊ต อุดม - Stand Up Comedy",
+        "description": "Stand-up comedy performance by โน๊ต อุดม.",
+        "filePath": "videos/not_audom.mp4"
+    },
+    {
+        "title": "สะเก็ดข่าว - Highlights",
+        "description": "Funny highlights from the show สะเก็ดข่าว.",
+        "filePath": "videos/sakedkhao.mp4"
+    },
+    {
+        "title": "คดีเด็ด - True Crime Stories",
+        "description": "Interesting true crime stories from the show คดีเด็ด.",
+        "filePath": "videos/kadidet.mp4"
+    },
+    {
+        "title": "ก็มาดิครับ - Comedy Show",
+        "description": "A fun comedy show featuring various skits.",
+        "filePath": "videos/gomadikrub.mp4"
+    },
+    {
+        "title": "ระเบิดเถิดเทิง - Comedy Series",
+        "description": "A popular Thai comedy series with lots of laughs.",
+        "filePath": "videos/rabeudterdtheng.mp4"
+    },
+    {
+        "title": "ชิงร้อยชิงล้าน - Game Show",
+        "description": "A fun game show filled with laughter and entertainment.",
+        "filePath": "videos/chingroi.mp4"
+    },
+    {
+        "title": "เพลงบรรเลงดนตรีผ่อนคลาย",
+        "description": "Relaxing instrumental music for a peaceful atmosphere.",
+        "filePath": "videos/relaxing_music.mp4"
+    },
+    {
+        "title": "ธรรมะ - พระอาจารย์สมชาย ฐานะวุฒโฒ",
+        "description": "Teachings and wisdom from พระอาจารย์สมชาย.",
+        "filePath": "videos/dharma.mp4"
+    },
+    {
+        "title": "นานาสาระ - Interesting Facts",
+        "description": "A collection of interesting facts and knowledge.",
+        "filePath": "videos/nanasara.mp4"
+    },
+    {
+        "title": "สารคดี - Documentaries",
+        "description": "Engaging documentaries on various topics.",
+        "filePath": "videos/documentaries.mp4"
+    },
+    {
+        "title": "กฎแห่งกรรม - The Law of Karma",
+        "description": "Exploring the concept of karma and its implications.",
+        "filePath": "videos/law_of_karma.mp4"
+    },
+    {
+        "title": "Case Study - Real Life Examples",
+        "description": "In-depth analysis of real-life case studies.",
+        "filePath": "videos/case_study.mp4"
+    }
+]

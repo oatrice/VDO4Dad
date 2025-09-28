@@ -1,0 +1,19 @@
+{
+  "name": "offline-video-app",
+  "version": "1.0.0",
+  "description": "A web application for offline video viewing, tailored for users with limited internet access.",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "live-server src"
+  },
+  "dependencies": {
+    "live-server": "^1.2.1"
+  },
+  "keywords": [
+    "offline",
+    "video",
+    "app"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
