@@ -14,7 +14,7 @@ set "OUTPUT_DIR=%PROJECT_SRC_DIR%\videos"
 set "JSON_OUTPUT_FILE=%PROJECT_SRC_DIR%\data\videos.json"
 
 REM yt-dlp options
-set "YTDLP_FORMAT=bestvideo[height<=720]+bestaudio/best"
+set "YTDLP_FORMAT=bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"
 set "YTDLP_OUTPUT_TEMPLATE=%%(title)s.%%(ext)s"
 set "YTDLP_MERGE_FORMAT=mp4"
 
@@ -31,6 +31,14 @@ if %errorlevel% neq 0 (
     echo [ERROR] yt-dlp could not be found in your system's PATH.
     echo Please install it from: https://github.com/yt-dlp/yt-dlp
     goto :eof
+)
+
+REM Check for ffmpeg, which is needed for merging best quality streams
+where ffmpeg >nul 2>nul
+if %errorlevel% neq 0 (
+    echo [WARNING] ffmpeg.exe could not be found in your system's PATH.
+    echo           Merging video and audio might fail.
+    echo           Please install FFmpeg from https://ffmpeg.org/download.html and add it to your PATH.
 )
 
 REM Check if download list exists
@@ -77,7 +85,7 @@ for /f "usebackq delims=" %%u in ("%DOWNLOAD_LIST%") do (
     set "json_filename=!video_filename:\=\\!"
 
     echo [INFO] Downloading: !video_title!
-    yt-dlp.exe "%%u" -o "%OUTPUT_DIR%\%YTDLP_OUTPUT_TEMPLATE%" -f "%YTDLP_FORMAT%" --merge-output-format "%YTDLP_MERGE_FORMAT%"
+    yt-dlp.exe "%%u" -o "%OUTPUT_DIR%\%YTDLP_OUTPUT_TEMPLATE%" -f "%YTDLP_FORMAT%" --merge-output-format "%YTDLP_MERGE_FORMAT%" --ffmpeg-location "ffmpeg.exe"
 
     if !errorlevel! equ 0 (
         echo [INFO] Appending to JSON...
