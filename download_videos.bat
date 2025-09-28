@@ -1,6 +1,9 @@
 @echo off
 setlocal enabledelayedexpansion
 
+REM Change console code page to UTF-8 to support Thai characters in filenames
+chcp 65001 > nul
+
 REM === Configuration ===
 REM Set the path to your project's src directory. %~dp0 is the directory where this script is located.
 set "PROJECT_SRC_DIR=%~dp0src"
@@ -12,7 +15,7 @@ set "JSON_OUTPUT_FILE=%PROJECT_SRC_DIR%\data\videos.json"
 
 REM yt-dlp options
 set "YTDLP_FORMAT=bestvideo[height<=720]+bestaudio/best"
-set "YTDLP_OUTPUT_TEMPLATE=%(title)s.%(ext)s"
+set "YTDLP_OUTPUT_TEMPLATE=%%(title)s.%%(ext)s"
 set "YTDLP_MERGE_FORMAT=mp4"
 
 REM === Script Logic ===
