@@ -1,13 +1,19 @@
 @echo off
-setlocal
+setlocal enabledelayedexpansion
 
 REM === Configuration ===
 REM Set the path to your project's src directory. %~dp0 is the directory where this script is located.
 set "PROJECT_SRC_DIR=%~dp0src"
 
-REM Set the path for the downloads list and the output directory
+REM Set paths for the download list, output directory, and JSON file
 set "DOWNLOAD_LIST=%~dp0download_list.txt"
 set "OUTPUT_DIR=%PROJECT_SRC_DIR%\videos"
+set "JSON_OUTPUT_FILE=%PROJECT_SRC_DIR%\data\videos.json"
+
+REM yt-dlp options
+set "YTDLP_FORMAT=bestvideo[height<=720]+bestaudio/best"
+set "YTDLP_OUTPUT_TEMPLATE=%(title)s.%(ext)s"
+set "YTDLP_MERGE_FORMAT=mp4"
 
 REM === Script Logic ===
 
@@ -36,13 +42,67 @@ if not exist "%OUTPUT_DIR%" (
     mkdir "%OUTPUT_DIR%"
 )
 
-echo [INFO] Starting video downloads from %DOWNLOAD_LIST%
-echo [INFO] Videos will be saved to: %OUTPUT_DIR%
+echo [INFO] Preparing to generate %JSON_OUTPUT_FILE%
+REM Start JSON file with an opening bracket
+echo [ > "%JSON_OUTPUT_FILE%"
+
+echo [INFO] Starting video downloads and JSON generation...
 echo.
 
-REM Run yt-dlp to download all videos from the list
-yt-dlp.exe --batch-file "%DOWNLOAD_LIST%" -o "%OUTPUT_DIR%\%(title)s.%(ext)s" -f "bestvideo[height<=720]+bestaudio/best" --merge-output-format mp4
+set "first_entry=true"
+
+REM Loop through each URL in the download list
+for /f "usebackq delims=" %%u in ("%DOWNLOAD_LIST%") do (
+    echo --------------------------------------------------
+    echo [INFO] Processing URL: %%u
+
+    REM Get video metadata (title, description, filename)
+    echo [INFO] Fetching metadata...
+    for /f "delims=" %%i in ('yt-dlp.exe --get-title "%%u"') do set "video_title=%%i"
+    for /f "delims=" %%i in ('yt-dlp.exe --get-description "%%u"') do set "video_description=%%i"
+    for /f "delims=" %%i in ('yt-dlp.exe --get-filename -o "%YTDLP_OUTPUT_TEMPLATE%" "%%u"') do set "video_filename=%%i"
+
+    REM Escape special characters for JSON
+    set "json_title=!video_title:"=\"!"
+    set "json_description=!video_description:"=\"!"
+    set "json_description=!json_description:^&=^&!"
+    set "json_description=!json_description:<=^<!"
+    set "json_description=!json_description:>=^>!"
+    set "json_description=!json_description:|=^|!"
+    set "json_description=!json_description:\=\\!"
+    set "json_description=!json_description:'=\'!"
+    set "json_filename=!video_filename:\=\\!"
+
+    echo [INFO] Downloading: !video_title!
+    yt-dlp.exe "%%u" -o "%OUTPUT_DIR%\%YTDLP_OUTPUT_TEMPLATE%" -f "%YTDLP_FORMAT%" --merge-output-format "%YTDLP_MERGE_FORMAT%"
+
+    if !errorlevel! equ 0 (
+        echo [INFO] Appending to JSON...
+        REM Add comma before the entry if it's not the first one
+        if "!first_entry!"=="true" (
+            set "first_entry=false"
+        ) else (
+            echo,>> "%JSON_OUTPUT_FILE%"
+        )
+
+        REM Append the JSON object for the video
+        (
+            echo     {
+            echo         "title": "!json_title!",
+            echo         "description": "!json_description!",
+            echo         "filePath": "videos/!json_filename!"
+            echo     }
+        )>> "%JSON_OUTPUT_FILE%"
+    ) else (
+        echo [WARNING] Failed to download or process %%u. Skipping.
+    )
+    echo.
+)
+
+REM Close the JSON array
+echo ]>> "%JSON_OUTPUT_FILE%"
 
 echo.
 echo [SUCCESS] All downloads are complete.
+echo [SUCCESS] videos.json has been generated at: %JSON_OUTPUT_FILE%
 pause
