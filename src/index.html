@@ -3,17 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Offline Video App</title>
+    <title>VDO 4 DAD</title>
     <link rel="stylesheet" href="styles/main.css">
 </head>
 <body>
     <div id="app">
-        <h1>คลังวิดีโอสำหรับคุณพ่อ</h1>
-        <div id="video-container"></div>
-        <div id="video-controls">
-            <button id="prev-btn">ก่อนหน้า</button>
-            <button id="play-btn">เล่น</button>
-            <button id="next-btn">ถัดไป</button>
+        <h1>Offline Video App</h1>
+        <div class="main-content">
+            <div id="video-player-container">
+                <video id="main-video-player" class="video-player" controls autoplay></video>
+                <h2 id="video-title" class="video-title"></h2>
+                <p id="video-description" class="video-description"></p>
+                <div id="video-controls">
+                    <button id="prev-btn" class="button">ก่อนหน้า</button>
+                    <button id="next-btn" class="button">ถัดไป</button>
+                </div>
+            </div>
+            <div id="video-list" class="video-list-container"></div>
         </div>
     </div>
     <script src="app.js"></script>
