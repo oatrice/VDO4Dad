@@ -78,7 +78,7 @@ for /f "usebackq delims=" %%u in ("%DOWNLOAD_LIST%") do (
         echo [INFO] Appending to JSON...
         REM Add comma before the entry if it's not the first one
         if not "!first_entry!"=="true" (
-            echo,>> "%JSON_OUTPUT_FILE%"
+            echo , >> "%JSON_OUTPUT_FILE%"
         )
 
         set "first_entry=false"
@@ -86,7 +86,7 @@ for /f "usebackq delims=" %%u in ("%DOWNLOAD_LIST%") do (
         REM Extract info from the temp metadata file and append to our main videos.json
         REM This requires a helper script, but for a pure batch solution, we can parse it manually.
         REM A simpler approach is to re-fetch the final filename.
-        for /f "delims=" %%i in ('yt-dlp.exe --get-filename -o "%OUTPUT_DIR%\%YTDLP_OUTPUT_TEMPLATE%" --restrict-filenames --merge-output-format "%YTDLP_MERGE_FORMAT%" "%%u"') do set "final_filename=%%~nxi"
+        for /f "delims=" %%i in ('yt-dlp.exe --get-filename -o "%OUTPUT_DIR%\%YTDLP_OUTPUT_TEMPLATE%" --merge-output-format "%YTDLP_MERGE_FORMAT%" "%%u"') do set "final_filename=%%~nxi"
         for /f "delims=" %%i in ('yt-dlp.exe --get-title "%%u"') do set "video_title=%%i"
         for /f "delims=" %%i in ('yt-dlp.exe --get-description "%%u"') do set "video_description=%%i"
 
