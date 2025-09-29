@@ -67,44 +67,45 @@ for /f "usebackq delims=" %%u in ("%DOWNLOAD_LIST%") do (
     echo --------------------------------------------------
     echo [INFO] Processing URL: %%u
 
-    REM Get video metadata (title, description, filename)
-    echo [INFO] Fetching metadata...
-    for /f "delims=" %%i in ('yt-dlp.exe --get-title "%%u"') do set "video_title=%%i"
-    for /f "delims=" %%i in ('yt-dlp.exe --get-description "%%u"') do set "video_description=%%i"
-    for /f "delims=" %%i in ('yt-dlp.exe --get-filename -o "%YTDLP_OUTPUT_TEMPLATE%" --restrict-filenames "%%u"') do set "video_filename=%%i"
-
-    REM Escape special characters for JSON
-    set "json_title=!video_title:"=\"!"
-    set "json_description=!video_description:"=\"!"
-    set "json_description=!json_description:\=\\!"
-    set "json_description=!json_description:%%=%%%%!"
-    set "json_description=!json_description:"=\"!"
-    set "json_description=!json_description:^&=^&!"
-    set "json_description=!json_description:<=^<!"
-    set "json_description=!json_description:>=^>!"
-    set "json_description=!json_description:|=^|!"
-    set "json_filename=!video_filename:\=\\!"
-
-    echo [INFO] Downloading: !video_title!
-    yt-dlp.exe "%%u" -o "%OUTPUT_DIR%\%YTDLP_OUTPUT_TEMPLATE%" -f "%YTDLP_FORMAT%" --merge-output-format "%YTDLP_MERGE_FORMAT%" --ffmpeg-location "ffmpeg.exe"
+    echo [INFO] Downloading and getting metadata for %%u
+    REM Download video and dump metadata to a temp file in one go
+    yt-dlp.exe "%%u" ^
+        -o "%OUTPUT_DIR%\%YTDLP_OUTPUT_TEMPLATE%" ^
+        -f "%YTDLP_FORMAT%" ^
+        --merge-output-format "%YTDLP_MERGE_FORMAT%"
 
     if !errorlevel! equ 0 (
         echo [INFO] Appending to JSON...
         REM Add comma before the entry if it's not the first one
-        if "!first_entry!"=="true" (
-            set "first_entry=false"
-        ) else (
+        if not "!first_entry!"=="true" (
             echo,>> "%JSON_OUTPUT_FILE%"
         )
 
-        REM Append the JSON object for the video
-        (
-            echo     {
+        set "first_entry=false"
+
+        REM Extract info from the temp metadata file and append to our main videos.json
+        REM This requires a helper script, but for a pure batch solution, we can parse it manually.
+        REM A simpler approach is to re-fetch the final filename.
+        for /f "delims=" %%i in ('yt-dlp.exe --get-filename -o "%OUTPUT_DIR%\%YTDLP_OUTPUT_TEMPLATE%" --restrict-filenames --merge-output-format "%YTDLP_MERGE_FORMAT%" "%%u"') do set "final_filename=%%~nxi"
+        for /f "delims=" %%i in ('yt-dlp.exe --get-title "%%u"') do set "video_title=%%i"
+        for /f "delims=" %%i in ('yt-dlp.exe --get-description "%%u"') do set "video_description=%%i"
+
+        REM Escape special characters for JSON
+        set "json_title=!video_title:"=\"!"
+        set "json_description=!video_description:"=\"!"
+        set "json_description=!json_description:\=\\!"
+        set "json_description=!json_description:%%=%%%%!"
+        set "json_description=!json_description:"=\"!"
+        set "json_description=!json_description:^&=^&!"
+        set "json_description=!json_description:<=^<!"
+        set "json_description=!json_description:>=^>!"
+        set "json_description=!json_description:|=^|!"
+
+        (   echo     {
             echo         "title": "!json_title!",
             echo         "description": "!json_description!",
-            echo         "filePath": "videos/!json_filename!"
-            echo     }
-        )>> "%JSON_OUTPUT_FILE%"
+            echo         "filePath": "videos/!final_filename!"
+            echo     } )>> "%JSON_OUTPUT_FILE%"
     ) else (
         echo [WARNING] Failed to download or process %%u. Skipping.
     )
