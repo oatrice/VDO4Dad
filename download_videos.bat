@@ -71,17 +71,18 @@ for /f "usebackq delims=" %%u in ("%DOWNLOAD_LIST%") do (
     echo [INFO] Fetching metadata...
     for /f "delims=" %%i in ('yt-dlp.exe --get-title "%%u"') do set "video_title=%%i"
     for /f "delims=" %%i in ('yt-dlp.exe --get-description "%%u"') do set "video_description=%%i"
-    for /f "delims=" %%i in ('yt-dlp.exe --get-filename -o "%YTDLP_OUTPUT_TEMPLATE%" "%%u"') do set "video_filename=%%i"
+    for /f "delims=" %%i in ('yt-dlp.exe --get-filename -o "%YTDLP_OUTPUT_TEMPLATE%" --restrict-filenames "%%u"') do set "video_filename=%%i"
 
     REM Escape special characters for JSON
     set "json_title=!video_title:"=\"!"
     set "json_description=!video_description:"=\"!"
+    set "json_description=!json_description:\=\\!"
+    set "json_description=!json_description:%%=%%%%!"
+    set "json_description=!json_description:"=\"!"
     set "json_description=!json_description:^&=^&!"
     set "json_description=!json_description:<=^<!"
     set "json_description=!json_description:>=^>!"
     set "json_description=!json_description:|=^|!"
-    set "json_description=!json_description:\=\\!"
-    set "json_description=!json_description:'=\'!"
     set "json_filename=!video_filename:\=\\!"
 
     echo [INFO] Downloading: !video_title!

@@ -1,5 +1,12 @@
-*.mp4
-src/.DS_Store
+# Ignore downloaded video files
+/src/videos/*.mp4
+
+# Ignore the generated JSON file, but keep the data directory
+/src/data/videos.json
+
+# Ignore executables
 *.exe
-src/data
-src/data/videos.json
+
+# Ignore OS-specific files
+.DS_Store
+src/.DS_Store
