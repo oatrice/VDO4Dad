@@ -22,6 +22,53 @@ h1 {
     margin-bottom: 20px;
 }
 
+/* === Download Section === */
+.download-container {
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 24px;
+    display: flex;
+    flex-direction: column;
+}
+
+.url-input {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 1rem;
+    margin-top: 8px;
+    margin-bottom: 12px;
+    box-sizing: border-box; /* Ensures padding doesn't affect width */
+}
+
+#download-status-container {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.progress-bar-container {
+    width: 100%;
+    background-color: #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    width: 0%;
+    height: 20px;
+    background-color: #4caf50; /* Green for progress */
+    text-align: center;
+    line-height: 20px;
+    color: white;
+    transition: width 0.2s ease-in-out;
+}
+
 /* === Main Layout (Flexbox) === */
 .main-content {
     display: flex;
