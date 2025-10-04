@@ -13,7 +13,7 @@ app.use(express.json());
 app.use(express.static('src'));
 
 // Initialize yt-dlp
-const ytDlpWrap = new YTDlpWrap();
+const ytDlpWrap = new YTDlpWrap('/opt/homebrew/bin/yt-dlp');
 
 // Store active downloads
 const activeDownloads = new Map();
@@ -78,10 +78,7 @@ app.get('/download', (req, res) => {
         '--no-playlist', // Download only single video, not playlist
         '--write-info-json', // Write metadata
         '--write-thumbnail', // Download thumbnail
-        '--embed-thumbnail', // Embed thumbnail in video
-        '--add-metadata', // Add metadata to video
-        '--no-warnings', // Suppress warnings
-        '--extract-flat', 'false' // Don't extract flat playlist
+        '--no-warnings' // Suppress warnings
     ];
 
     // Start download
@@ -100,50 +97,83 @@ app.get('/download', (req, res) => {
     let lastProgress = 0;
     let videoInfo = {};
 
-    downloadProcess.stdout.on('data', (data) => {
-        const output = data.toString();
-        console.log('yt-dlp output:', output);
-        
-        // Parse progress from yt-dlp output
-        const progressMatch = output.match(/\[download\]\s+(\d+\.?\d*)%/);
-        if (progressMatch) {
-            const progress = parseFloat(progressMatch[1]);
-            if (progress > lastProgress) {
-                lastProgress = progress;
-                res.write(`data: ${JSON.stringify({ 
-                    type: 'progress', 
-                    percent: progress,
-                    message: `กำลังดาวโหลด... ${progress.toFixed(1)}%`
-                })}\n\n`);
+    // Check if downloadProcess exists
+    if (!downloadProcess) {
+        res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: 'ไม่สามารถเริ่มการดาวโหลดได้' 
+        })}\n\n`);
+        res.end();
+        activeDownloads.delete(downloadId);
+        return;
+    }
+
+    // Set up progress tracking with polling
+    let progressInterval;
+    let downloadStartTime = Date.now();
+    
+    // Send initial progress
+    res.write(`data: ${JSON.stringify({ 
+        type: 'progress', 
+        percent: 0,
+        message: 'กำลังเริ่มดาวโหลด...'
+    })}\n\n`);
+
+    // Poll for progress by checking file size
+    const checkProgress = () => {
+        try {
+            const files = fs.readdirSync(videosDir);
+            const videoFiles = files.filter(file => 
+                file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv')
+            );
+            
+            if (videoFiles.length > 0) {
+                const videoFile = videoFiles[0];
+                const filePath = path.join(videosDir, videoFile);
+                const stats = fs.statSync(filePath);
+                const fileSizeMB = stats.size / (1024 * 1024);
+                
+                // Estimate progress based on time elapsed (rough estimate)
+                const elapsedSeconds = (Date.now() - downloadStartTime) / 1000;
+                let estimatedProgress = Math.min(95, (elapsedSeconds / 30) * 100); // Assume 30 seconds for typical video
+                
+                if (estimatedProgress > lastProgress) {
+                    lastProgress = estimatedProgress;
+                    res.write(`data: ${JSON.stringify({ 
+                        type: 'progress', 
+                        percent: estimatedProgress,
+                        message: `กำลังดาวโหลด... ${estimatedProgress.toFixed(1)}% (${fileSizeMB.toFixed(1)} MB)`
+                    })}\n\n`);
+                }
+                
+                // Set video title from filename
+                if (!videoInfo.title) {
+                    videoInfo.title = videoFile.replace(/\.[^/.]+$/, ""); // Remove extension
+                }
             }
+        } catch (error) {
+            // Ignore errors during progress checking
         }
+    };
 
-        // Parse video title
-        const titleMatch = output.match(/\[download\] Destination: (.+)/);
-        if (titleMatch) {
-            const fileName = path.basename(titleMatch[1]);
-            videoInfo.title = fileName.replace(/\.[^/.]+$/, ""); // Remove extension
-        }
-    });
+    // Start progress polling every 2 seconds
+    progressInterval = setInterval(checkProgress, 2000);
 
-    downloadProcess.stderr.on('data', (data) => {
-        const error = data.toString();
-        console.log('yt-dlp error:', error);
-        
-        // Check for errors
-        if (error.includes('ERROR') || error.includes('error')) {
-            res.write(`data: ${JSON.stringify({ 
-                type: 'error', 
-                message: error.trim() 
-            })}\n\n`);
-            res.end();
-            activeDownloads.delete(downloadId);
-            return;
-        }
+    // Handle process events
+    downloadProcess.on('error', (error) => {
+        console.log('Download process error:', error);
+        clearInterval(progressInterval);
+        res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: `เกิดข้อผิดพลาด: ${error.message}` 
+        })}\n\n`);
+        res.end();
+        activeDownloads.delete(downloadId);
     });
 
     downloadProcess.on('close', (code) => {
         console.log(`Download process exited with code ${code}`);
+        clearInterval(progressInterval);
         
         if (code === 0) {
             // Download successful
@@ -196,6 +226,9 @@ app.get('/download', (req, res) => {
             const download = activeDownloads.get(downloadId);
             if (download.process) {
                 download.process.kill();
+            }
+            if (progressInterval) {
+                clearInterval(progressInterval);
             }
             activeDownloads.delete(downloadId);
         }
