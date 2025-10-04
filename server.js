@@ -44,7 +44,6 @@ function updateVideosJson(videoInfo) {
 }
 
 // Download endpoint with Server-Sent Events
-app.get('/download', (req, res) => {
 app.get('/download', async (req, res) => {
     const url = req.query.url;
     
@@ -54,7 +53,6 @@ app.get('/download', async (req, res) => {
 
     // Set headers for Server-Sent Events
     res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
@@ -72,8 +70,8 @@ app.get('/download', async (req, res) => {
 
     // Send initial message
     res.write(`data: ${JSON.stringify({ type: 'start', message: 'เริ่มดาวโหลด...' })}\n\n`);
-    
-    let videoInfo = {};
+
+    let videoInfo;
     try {
         // 1. Get video metadata first to get the correct title
         videoInfo = await ytDlpWrap.getVideoInfo(url);
@@ -91,11 +89,9 @@ app.get('/download', async (req, res) => {
 
     // Configure yt-dlp options
     const options = [
-        '--output', path.join(videosDir, '%(title)s.%(ext)s'),
         '--output', outputPath,
         '--format', 'best[height<=720]', // Limit to 720p for smaller file size
         '--no-playlist', // Download only single video, not playlist
-        '--write-info-json', // Write metadata
         '--write-thumbnail', // Download thumbnail
         '--no-warnings' // Suppress warnings
     ];
@@ -108,13 +104,11 @@ app.get('/download', async (req, res) => {
 
     // Store download info
     activeDownloads.set(downloadId, {
-        process: downloadProcess,
+        process: downloadProcess, // This is the EventEmitter
         url: url,
         startTime: Date.now()
     });
 
-    let lastProgress = 0;
-    let videoInfo = {};
 
     // Check if downloadProcess exists
     if (!downloadProcess) {
@@ -127,61 +121,25 @@ app.get('/download', async (req, res) => {
         return;
     }
 
-    // Set up progress tracking with polling
-    let progressInterval;
-    let downloadStartTime = Date.now();
-    
     // Send initial progress
     res.write(`data: ${JSON.stringify({ 
         type: 'progress', 
         percent: 0,
         message: 'กำลังเริ่มดาวโหลด...'
     })}\n\n`);
-
-    // Poll for progress by checking file size
-    const checkProgress = () => {
-        try {
-            const files = fs.readdirSync(videosDir);
-            const videoFiles = files.filter(file => 
-                file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv')
-            );
-            
-            if (videoFiles.length > 0) {
-                const videoFile = videoFiles[0];
-                const filePath = path.join(videosDir, videoFile);
-                const stats = fs.statSync(filePath);
-                const fileSizeMB = stats.size / (1024 * 1024);
-                
-                // Estimate progress based on time elapsed (rough estimate)
-                const elapsedSeconds = (Date.now() - downloadStartTime) / 1000;
-                let estimatedProgress = Math.min(95, (elapsedSeconds / 30) * 100); // Assume 30 seconds for typical video
-                
-                if (estimatedProgress > lastProgress) {
-                    lastProgress = estimatedProgress;
-                    res.write(`data: ${JSON.stringify({ 
-                        type: 'progress', 
-                        percent: estimatedProgress,
-                        message: `กำลังดาวโหลด... ${estimatedProgress.toFixed(1)}% (${fileSizeMB.toFixed(1)} MB)`
-                    })}\n\n`);
-                }
-                
-                // Set video title from filename
-                if (!videoInfo.title) {
-                    videoInfo.title = videoFile.replace(/\.[^/.]+$/, ""); // Remove extension
-                }
-            }
-        } catch (error) {
-            // Ignore errors during progress checking
-        }
-    };
-
-    // Start progress polling every 2 seconds
-    progressInterval = setInterval(checkProgress, 2000);
+    
+    // Use the 'progress' event for accurate progress reporting
+    downloadProcess.on('progress', (progress) => {
+        res.write(`data: ${JSON.stringify({
+            type: 'progress',
+            percent: progress.percent,
+            message: `กำลังดาวน์โหลด... ${progress.percent}%`
+        })}\n\n`);
+    });
 
     // Handle process events
     downloadProcess.on('error', (error) => {
         console.log('Download process error:', error);
-        clearInterval(progressInterval);
         res.write(`data: ${JSON.stringify({ 
             type: 'error', 
             message: `เกิดข้อผิดพลาด: ${error.message}` 
@@ -192,7 +150,6 @@ app.get('/download', async (req, res) => {
 
     downloadProcess.on('close', (code) => {
         console.log(`Download process exited with code ${code}`);
-        clearInterval(progressInterval);
         
         if (code === 0) {
             // Download successful
@@ -201,15 +158,12 @@ app.get('/download', async (req, res) => {
                 const expectedFileNameStart = sanitizedTitle;
                 const files = fs.readdirSync(videosDir);
                 const videoFile = files.find(file => 
-                    file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv')
                     file.startsWith(expectedFileNameStart) && (file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv'))
                 );
                 
                 if (videoFile) {
-                    const relativePath = `videos/${videoFile}`;
                     const relativePath = `videos/${encodeURIComponent(videoFile)}`;
                     videoInfo.filePath = relativePath;
-                    
                     // Update videos.json
                     updateVideosJson(videoInfo);
                     
@@ -247,10 +201,7 @@ app.get('/download', async (req, res) => {
         if (activeDownloads.has(downloadId)) {
             const download = activeDownloads.get(downloadId);
             if (download.process) {
-                download.process.kill();
-            }
-            if (progressInterval) {
-                clearInterval(progressInterval);
+                download.process.ytDlpProcess.kill();
             }
             activeDownloads.delete(downloadId);
         }
@@ -276,7 +227,7 @@ app.post('/downloads/:id/cancel', (req, res) => {
     if (activeDownloads.has(downloadId)) {
         const download = activeDownloads.get(downloadId);
         if (download.process) {
-            download.process.kill();
+            download.process.ytDlpProcess.kill();
         }
         activeDownloads.delete(downloadId);
         res.json({ message: 'Download cancelled' });
@@ -304,7 +255,7 @@ process.on('SIGINT', () => {
     // Kill all active downloads
     activeDownloads.forEach((download, id) => {
         if (download.process) {
-            download.process.kill();
+            download.process.ytDlpProcess.kill();
         }
     });
     
