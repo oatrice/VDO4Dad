@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const YTDlpWrap = require('yt-dlp-wrap').default;
+const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 
 const app = express();
 const PORT = 3000;
@@ -98,6 +99,8 @@ app.get('/download', async (req, res) => {
         '--no-playlist', // Download only single video, not playlist
         '--write-thumbnail', // Download thumbnail
         '--merge-output-format', 'mp4', // Ensure the final file is mp4
+        // Specify ffmpeg location to ensure merging works
+        '--ffmpeg-location', ffmpegPath,
         '--no-warnings' // Suppress warnings
     ];
 
