@@ -93,9 +93,11 @@ app.get('/download', async (req, res) => {
     // Configure yt-dlp options
     const options = [
         '--output', outputPath,
-        '--format', 'best[height<=720]', // Limit to 720p for smaller file size
+        // Prioritize MP4 format, up to 720p. Fallback to best available.
+        '--format', 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]',
         '--no-playlist', // Download only single video, not playlist
         '--write-thumbnail', // Download thumbnail
+        '--merge-output-format', 'mp4', // Ensure the final file is mp4
         '--no-warnings' // Suppress warnings
     ];
 
