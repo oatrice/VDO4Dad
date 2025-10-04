@@ -84,7 +84,10 @@ app.get('/download', async (req, res) => {
     }
 
     // Sanitize filename to prevent issues
-    const sanitizedTitle = videoInfo.title.replace(/[<>:"/\\|?*]/g, '_');
+    const sanitizedTitle = videoInfo.title
+        .replace(/\|/g, '｜') // Replace pipe with full-width pipe
+        .replace(/[<>:"/\\?*]/g, ''); // Remove other invalid characters
+
     const outputPath = path.join(videosDir, `${sanitizedTitle}.%(ext)s`);
 
     // Configure yt-dlp options
