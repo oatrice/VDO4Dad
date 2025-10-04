@@ -9,7 +9,7 @@
     "serve": "http-server src -p 8080",
     "backend": "node server.js",
     "dev-full": "concurrently \"npm run backend\" \"npm run dev\"",
-    "test": "node test-download1.js"
+    "test": "node test-download3.js"
   },
   "keywords": [
     "offline",
@@ -22,7 +22,9 @@
   "devDependencies": {
     "http-server": "^14.1.1",
     "live-server": "^1.2.2",
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
+    "fluent-ffmpeg": "^2.1.2"
   },
   "dependencies": {
     "yt-dlp-wrap": "^2.3.12",

@@ -1,4 +1,9 @@
 const YTDlpWrap = require('yt-dlp-wrap').default;
+const path = require('path');
+const fs = require('fs');
+const ffmpeg = require('fluent-ffmpeg');
+const ffprobePath = require('@ffprobe-installer/ffprobe').path;
+ffmpeg.setFfprobePath(ffprobePath);
 
 // Test yt-dlp functionality
 async function testYtDlp() {
@@ -45,6 +50,36 @@ async function testServer() {
     }
 }
 
+// Verify that the downloaded video file is playable
+async function verifyVideoFile(relativePath) {
+    console.log(`\n🕵️  Verifying downloaded file: ${relativePath}`);
+    const decodedPath = decodeURIComponent(relativePath);
+    const absolutePath = path.join(__dirname, 'src', decodedPath);
+
+    if (!fs.existsSync(absolutePath)) {
+        console.error(`❌ Verification failed: File not found at ${absolutePath}`);
+        return false;
+    }
+
+    return new Promise((resolve) => {
+        ffmpeg.ffprobe(absolutePath, (err, metadata) => {
+            if (err) {
+                console.error(`❌ Verification failed: ffprobe error:`, err.message);
+                resolve(false);
+                return;
+            }
+
+            if (metadata && metadata.streams && metadata.streams.some(s => s.codec_type === 'video') && metadata.format.duration > 0) {
+                console.log(`✅ Verification successful: Video has a valid video stream and duration (${metadata.format.duration}s).`);
+                resolve(true);
+            } else {
+                console.error('❌ Verification failed: File is not a valid video file (no video stream or zero duration).');
+                resolve(false);
+            }
+        });
+    });
+}
+
 // Test download endpoint functionality
 async function testDownloadEndpoint() {
     console.log('🧪 Testing /download endpoint...');
@@ -52,7 +87,7 @@ async function testDownloadEndpoint() {
     // A short, reliable, public domain video for testing
     const testUrl = 'https://youtu.be/sgs4Ebj0MTw';
     
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         // Use native fetch for SSE in Node.js 18+
         fetch(`http://localhost:3000/download?url=${encodeURIComponent(testUrl)}`).then(async (response) => {
             const reader = response.body.getReader();
@@ -62,7 +97,7 @@ async function testDownloadEndpoint() {
             const testTimeout = setTimeout(() => {
                 if (!testPassed) {
                     console.error('❌ Download test timed out after 30 seconds.');
-                    resolve(false);
+                    reject(new Error('Download test timed out'));
                 }
             }, 30000); // 30-second timeout
 
@@ -76,18 +111,22 @@ async function testDownloadEndpoint() {
                 for (const line of lines) {
                     const json = line.substring(5);
                     const data = JSON.parse(json);
-                    if (data.type === 'done') {
+                    if (data.type === 'done' && data.filePath) {
                         console.log(`✅ Download test successful: '${data.title}' downloaded.`);
+                        // Now, verify the file is playable
+                        const isPlayable = await verifyVideoFile(data.filePath);
                         testPassed = true;
                         clearTimeout(testTimeout);
-                        resolve(true);
+                        resolve(isPlayable);
                         return;
                     }
                 }
             }
+            // If loop finishes without 'done' event
+            if (!testPassed) reject(new Error('Stream ended before download was complete.'));
         }).catch(error => {
             console.error('❌ Download test failed:', error.message);
-            resolve(false);
+            reject(error);
         });
     });
 }
@@ -102,7 +141,12 @@ async function runTests() {
     const serverOk = await testServer();
     console.log('');
 
-    const downloadOk = serverOk ? await testDownloadEndpoint() : false;
+    let downloadOk = false;
+    if (serverOk) {
+        try {
+            downloadOk = await testDownloadEndpoint();
+        } catch (e) { /* Error is already logged inside the function */ }
+    }
     console.log('');
     
     if (ytDlpOk && serverOk && downloadOk) {
