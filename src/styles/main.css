@@ -52,21 +52,76 @@ h1 {
     gap: 12px;
 }
 
+.download-status-item {
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.download-status-item span {
+    font-size: 0.9rem;
+    color: #495057;
+    word-break: break-all;
+}
+
 .progress-bar-container {
     width: 100%;
     background-color: #e0e0e0;
     border-radius: 4px;
     overflow: hidden;
+    height: 24px;
+    position: relative;
 }
 
 .progress-bar {
     width: 0%;
-    height: 20px;
-    background-color: #4caf50; /* Green for progress */
+    height: 100%;
+    background: linear-gradient(90deg, #4caf50, #45a049);
     text-align: center;
-    line-height: 20px;
+    line-height: 24px;
     color: white;
-    transition: width 0.2s ease-in-out;
+    font-size: 0.8rem;
+    font-weight: bold;
+    transition: width 0.3s ease-in-out;
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.2),
+        transparent
+    );
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+.download-status-item.success {
+    background-color: #d4edda;
+    border-color: #c3e6cb;
+    color: #155724;
+}
+
+.download-status-item.error {
+    background-color: #f8d7da;
+    border-color: #f5c6cb;
+    color: #721c24;
 }
 
 /* === Main Layout (Flexbox) === */

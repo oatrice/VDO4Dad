@@ -1,50 +1,101 @@
-# Offline Video App
+# VDO 4 DAD - Offline Video App
 
-## Overview
-The Offline Video App is designed to provide a curated selection of videos for offline viewing, specifically tailored for users with limited internet access. The application focuses on delivering content that is light-hearted and educational, ensuring a positive viewing experience.
+แอปพลิเคชันสำหรับดูวิดีโอแบบออฟไลน์ พร้อมระบบดาวโหลดวิดีโอจาก YouTube และเว็บไซต์อื่นๆ ด้วย yt-dlp
 
-## Features
-- **Curated Video Content**: Enjoy a variety of videos including comedy shows, music, and educational content.
-- **Offline Playback**: Videos can be accessed without an internet connection, making it ideal for users in areas with poor connectivity.
-- **User-Friendly Interface**: Simple navigation to browse and play videos.
+## ฟีเจอร์
 
-## Project Structure
-```
-offline-video-app
-├── src
-│   ├── index.html          # Main HTML document
-│   ├── app.js              # JavaScript logic for video handling
-│   ├── styles
-│   │   └── main.css        # CSS styles for the application
-│   ├── videos
-│   │   └── README.md       # Information about video content
-│   └── data
-│       └── videos.json     # JSON file containing video data
-├── package.json            # npm configuration file
-└── README.md               # Project documentation
+- 🎥 ดูวิดีโอแบบออฟไลน์
+- 📥 ดาวโหลดวิดีโอจาก YouTube และเว็บไซต์อื่นๆ
+- 📊 แสดงสถานะการดาวโหลดแบบเรียลไทม์
+- 📱 Responsive Design รองรับทุกขนาดหน้าจอ
+- 🔄 อัปเดตรายการวิดีโออัตโนมัติหลังดาวโหลดเสร็จ
+
+## การติดตั้ง
+
+1. ติดตั้ง dependencies:
+```bash
+npm install
 ```
 
-## Installation
-1. Clone the repository to your local machine.
-2. Navigate to the project directory.
-3. Install the necessary dependencies using npm:
-   ```
-   npm install
-   ```
+2. ติดตั้ง yt-dlp (จำเป็นสำหรับการดาวโหลด):
+```bash
+# macOS (ใช้ Homebrew)
+brew install yt-dlp
 
-## Running the Application
-### On macOS
-1. Open the terminal and navigate to the project directory.
-2. Use a local server to serve the `src/index.html` file. You can use tools like `http-server` or `live-server`.
-3. Open your web browser and go to `http://localhost:PORT` (replace PORT with the port number used by your server).
+# หรือดาวโหลดจาก https://github.com/yt-dlp/yt-dlp/releases
+```
 
-### On Windows
-1. Open Command Prompt and navigate to the project directory.
-2. Use a local server to serve the `src/index.html` file.
-3. Open your web browser and go to `http://localhost:PORT`.
+## การใช้งาน
 
-## Adding Videos
-To add or manage videos, update the `src/data/videos.json` file with new video objects, ensuring they follow the specified format.
+### วิธีที่ 1: รันแอปแบบเต็ม (Frontend + Backend)
+```bash
+npm run dev-full
+```
+
+### วิธีที่ 2: รันแยกส่วน
+```bash
+# Terminal 1: รัน Backend
+npm run backend
+
+# Terminal 2: รัน Frontend
+npm run dev
+```
+
+## การดาวโหลดวิดีโอ
+
+1. เปิดแอปในเบราว์เซอร์ (http://localhost:8080)
+2. ใส่ URL ของวิดีโอที่ต้องการดาวโหลดในช่องข้อความ
+3. สามารถใส่หลาย URL โดยคั่นด้วยคอมม่า (,) หรือขึ้นบรรทัดใหม่
+4. กดปุ่ม "ดาวน์โหลดวิดีโอ"
+5. ดูสถานะการดาวโหลดแบบเรียลไทม์
+
+## รองรับเว็บไซต์
+
+ระบบรองรับการดาวโหลดจากเว็บไซต์ที่ yt-dlp รองรับ เช่น:
+- YouTube
+- Vimeo
+- Facebook
+- Twitter
+- และอีกมากมาย
+
+## โครงสร้างไฟล์
+
+```
+VDO4Dad/
+├── src/
+│   ├── index.html          # หน้าเว็บหลัก
+│   ├── app.js              # JavaScript หลัก
+│   ├── styles/
+│   │   └── main.css        # CSS styles
+│   ├── data/
+│   │   └── videos.json     # ข้อมูลวิดีโอ
+│   └── videos/             # ไฟล์วิดีโอที่ดาวโหลด
+├── server.js               # Express.js backend
+├── package.json
+└── README.md
+```
+
+## API Endpoints
+
+- `GET /download?url=<video_url>` - ดาวโหลดวิดีโอ (Server-Sent Events)
+- `GET /downloads/status` - ดูสถานะการดาวโหลด
+- `POST /downloads/:id/cancel` - ยกเลิกการดาวโหลด
+- `GET /health` - ตรวจสอบสถานะเซิร์ฟเวอร์
+
+## การแก้ไขปัญหา
+
+### yt-dlp ไม่ทำงาน
+- ตรวจสอบว่า yt-dlp ติดตั้งแล้วและอยู่ใน PATH
+- อัปเดต yt-dlp: `yt-dlp -U`
+
+### ไม่สามารถเชื่อมต่อกับ Backend
+- ตรวจสอบว่า Backend กำลังรันอยู่ที่ port 3000
+- ตรวจสอบ CORS settings
+
+### วิดีโอไม่แสดงในรายการ
+- ตรวจสอบว่าไฟล์วิดีโออยู่ในโฟลเดอร์ `src/videos/`
+- ตรวจสอบไฟล์ `src/data/videos.json`
 
 ## License
-This project is licensed under the MIT License. See the LICENSE file for more details.
+
+MIT License

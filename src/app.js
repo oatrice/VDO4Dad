@@ -91,69 +91,58 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // Function to download a video from a URL
-    async function downloadVideo(url) {
-        const fileName = url.substring(url.lastIndexOf('/') + 1);
+    function downloadVideo(url) {
+        // ใช้ URL เป็น ID ชั่วคราวเพื่อติดตามสถานะ
+        const uniqueId = `status-${Date.now()}-${Math.random()}`;
+        const fileName = url.length > 50 ? url.substring(0, 50) + '...' : url;
         const statusElement = createStatusElement(fileName);
         const progressBar = statusElement.querySelector('.progress-bar');
+        const statusText = statusElement.querySelector('span');
 
-        try {
-            const response = await fetch(url);
+        // เชื่อมต่อกับ Backend ผ่าน Server-Sent Events
+        const eventSource = new EventSource(`http://localhost:3000/download?url=${encodeURIComponent(url)}`);
 
-            if (!response.ok) {
-                throw new Error(`ดาวน์โหลดล้มเหลว: ${response.status} ${response.statusText}`);
-            }
+        eventSource.onmessage = (event) => {
+            const data = JSON.parse(event.data);
 
-            const contentLength = response.headers.get('content-length');
-            if (!contentLength) {
-                console.warn('ไม่สามารถหาขนาดไฟล์ได้ จะไม่แสดงสถานะการดาวน์โหลด');
-            }
-
-            const total = parseInt(contentLength, 10);
-            let loaded = 0;
-
-            const reader = response.body.getReader();
-            const chunks = [];
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) {
+            switch (data.type) {
+                case 'start':
+                    statusText.textContent = `[${data.message}] ${fileName}`;
                     break;
-                }
-                chunks.push(value);
-                loaded += value.length;
-
-                if (total) {
-                    const percent = Math.round((loaded / total) * 100);
+                case 'progress':
+                    const percent = Math.round(data.percent);
                     progressBar.style.width = `${percent}%`;
                     progressBar.textContent = `${percent}%`;
-                }
+                    break;
+                case 'done':
+                    statusElement.className = 'download-status-item success';
+                    statusElement.innerHTML = `✅ ดาวน์โหลด '${fileName}' สำเร็จ!`;
+                    // Refresh the video list to show the new video
+                    setTimeout(() => {
+                        location.reload();
+                    }, 2000);
+                    eventSource.close(); // ปิดการเชื่อมต่อเมื่อเสร็จสิ้น
+                    break;
+                case 'error':
+                    statusElement.className = 'download-status-item error';
+                    statusElement.innerHTML = `❌ เกิดข้อผิดพลาดในการดาวน์โหลด '${fileName}': ${data.message}`;
+                    eventSource.close();
+                    break;
             }
+        };
 
-            const blob = new Blob(chunks);
-            const blobUrl = URL.createObjectURL(blob);
-
-            // Add the new video to our list
-            const newVideo = {
-                title: fileName || 'Untitled Video',
-                description: `Downloaded from: ${url}`,
-                filePath: blobUrl
-            };
-            videos.push(newVideo);
-            renderVideoList(); // Re-render the list to show the new video
-
-            statusElement.textContent = `✅ ดาวน์โหลด '${fileName}' สำเร็จ!`;
-            statusElement.style.color = 'green';
-
-        } catch (error) {
-            console.error('Download error:', error);
-            statusElement.textContent = `❌ เกิดข้อผิดพลาดในการดาวน์โหลด '${fileName}': ${error.message}`;
-            statusElement.style.color = 'red';
-        }
+        eventSource.onerror = (err) => {
+            console.error("EventSource failed:", err);
+            statusElement.className = 'download-status-item error';
+            statusElement.innerHTML = `❌ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ดาวน์โหลดได้`;
+            eventSource.close();
+        };
     }
 
     // Function to create a status element for a download
     function createStatusElement(fileName) {
         const statusElement = document.createElement('div');
+        statusElement.className = 'download-status-item';
         statusElement.innerHTML = `
             <span>กำลังดาวน์โหลด: ${fileName}</span>
             <div class="progress-bar-container"><div class="progress-bar">0%</div></div>
