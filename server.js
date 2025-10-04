@@ -45,6 +45,7 @@ function updateVideosJson(videoInfo) {
 
 // Download endpoint with Server-Sent Events
 app.get('/download', (req, res) => {
+app.get('/download', async (req, res) => {
     const url = req.query.url;
     
     if (!url) {
@@ -54,6 +55,7 @@ app.get('/download', (req, res) => {
     // Set headers for Server-Sent Events
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
+        'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
         'Access-Control-Allow-Origin': '*',
@@ -70,10 +72,27 @@ app.get('/download', (req, res) => {
 
     // Send initial message
     res.write(`data: ${JSON.stringify({ type: 'start', message: 'เริ่มดาวโหลด...' })}\n\n`);
+    
+    let videoInfo = {};
+    try {
+        // 1. Get video metadata first to get the correct title
+        videoInfo = await ytDlpWrap.getVideoInfo(url);
+        console.log('Fetched video info:', videoInfo.title);
+    } catch (error) {
+        console.error('Failed to get video info:', error);
+        res.write(`data: ${JSON.stringify({ type: 'error', message: 'ไม่สามารถดึงข้อมูลวิดีโอได้' })}\n\n`);
+        res.end();
+        return;
+    }
+
+    // Sanitize filename to prevent issues
+    const sanitizedTitle = videoInfo.title.replace(/[<>:"/\\|?*]/g, '_');
+    const outputPath = path.join(videosDir, `${sanitizedTitle}.%(ext)s`);
 
     // Configure yt-dlp options
     const options = [
         '--output', path.join(videosDir, '%(title)s.%(ext)s'),
+        '--output', outputPath,
         '--format', 'best[height<=720]', // Limit to 720p for smaller file size
         '--no-playlist', // Download only single video, not playlist
         '--write-info-json', // Write metadata
@@ -179,13 +198,16 @@ app.get('/download', (req, res) => {
             // Download successful
             try {
                 // Find the downloaded file
+                const expectedFileNameStart = sanitizedTitle;
                 const files = fs.readdirSync(videosDir);
                 const videoFile = files.find(file => 
                     file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv')
+                    file.startsWith(expectedFileNameStart) && (file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv'))
                 );
                 
                 if (videoFile) {
                     const relativePath = `videos/${videoFile}`;
+                    const relativePath = `videos/${encodeURIComponent(videoFile)}`;
                     videoInfo.filePath = relativePath;
                     
                     // Update videos.json

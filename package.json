@@ -9,7 +9,7 @@
     "serve": "http-server src -p 8080",
     "backend": "node server.js",
     "dev-full": "concurrently \"npm run backend\" \"npm run dev\"",
-    "test": "node test-download.js"
+    "test": "node test-download1.js"
   },
   "keywords": [
     "offline",
