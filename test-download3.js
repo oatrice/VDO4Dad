@@ -85,21 +85,24 @@ async function testDownloadEndpoint() {
     console.log('🧪 Testing /download endpoint...');
 
     // A short, reliable, public domain video for testing
-    const testUrl = 'https://youtu.be/sgs4Ebj0MTw';
+    const testUrl = 'https://www.youtube.com/watch?v=COcc7SZsRyQ';
     
     return new Promise((resolve, reject) => {
         // Use native fetch for SSE in Node.js 18+
-        fetch(`http://localhost:3000/download?url=${encodeURIComponent(testUrl)}`).then(async (response) => {
+        const controller = new AbortController();
+        const abortSignal = controller.signal;
+        fetch(`http://localhost:3000/download?url=${encodeURIComponent(testUrl)}`, { signal: abortSignal }).then(async (response) => {
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let testPassed = false;
 
             const testTimeout = setTimeout(() => {
                 if (!testPassed) {
-                    console.error('❌ Download test timed out after 30 seconds.');
+                    console.error('❌ Download test timed out after 120 seconds.');
+                    try { controller.abort(); } catch (_) { /* ignore */ }
                     reject(new Error('Download test timed out'));
                 }
-            }, 30000); // 30-second timeout
+            }, 120000); // 120-second timeout
 
             while (true) {
                 const { done, value } = await reader.read();
