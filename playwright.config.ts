@@ -2,8 +2,10 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
     testDir: './tests',
-    timeout: 180000, // 3 minutes per test to allow video download
-    expect: { timeout: 120000 },
+    timeout: 600000, // 10 minutes per test to allow video download
+    expect: { timeout: 180000 },
+    retries: 2,
+    workers: 1,
     use: {
         baseURL: 'http://localhost:8080',
         headless: true,

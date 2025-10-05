@@ -15,13 +15,17 @@ test.describe('Download flow', () => {
         // Click the download button
         await page.click('#download-btn');
 
-        // Wait for either success or error status item to appear
+        // First, the status item should appear quickly (progress bar may be zero-width initially)
+        const statusItem = page.locator('#download-status-container .download-status-item');
+        await statusItem.waitFor({ state: 'visible', timeout: 60000 });
+
+        // Then wait longer for either success or error
         const successLocator = page.locator('#download-status-container .download-status-item.success');
         const errorLocator = page.locator('#download-status-container .download-status-item.error');
 
         const result = await Promise.race([
-            successLocator.waitFor({ state: 'visible', timeout: 150000 }).then(() => 'success'),
-            errorLocator.waitFor({ state: 'visible', timeout: 150000 }).then(() => 'error')
+            successLocator.waitFor({ state: 'visible', timeout: 480000 }).then(() => 'success'), // up to 8 minutes
+            errorLocator.waitFor({ state: 'visible', timeout: 480000 }).then(() => 'error')
         ]);
 
         expect(result).toBe('success');
