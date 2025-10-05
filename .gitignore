@@ -12,3 +12,4 @@
 src/.DS_Store
 node_modules
 src/videos
+test-results
