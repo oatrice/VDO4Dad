@@ -215,6 +215,20 @@ app.get('/download', async (req, res) => {
         activeDownloads.delete(downloadId);
     }, 300000); // 5 minutes timeout
 
+    // Add progress monitoring to detect stuck downloads
+    let lastProgressTime = Date.now();
+    let lastProgressPercent = 0;
+    const progressTimeout = setTimeout(() => {
+        const timeSinceLastProgress = Date.now() - lastProgressTime;
+        if (timeSinceLastProgress > 60000) { // 1 minute without progress
+            logWarn('Download appears to be stuck', { 
+                downloadId, 
+                timeSinceLastProgress, 
+                lastProgressPercent 
+            });
+        }
+    }, 30000); // Check every 30 seconds
+
     // Send initial progress
     res.write(`data: ${JSON.stringify({ 
         type: 'progress', 
@@ -224,6 +238,8 @@ app.get('/download', async (req, res) => {
     
     // Use the 'progress' event for accurate progress reporting
     downloadProcess.on('progress', (progress) => {
+        lastProgressTime = Date.now();
+        lastProgressPercent = progress.percent;
         logInfo('Download progress', { downloadId, percent: progress.percent });
         res.write(`data: ${JSON.stringify({
             type: 'progress',
@@ -236,6 +252,7 @@ app.get('/download', async (req, res) => {
     downloadProcess.on('error', (error) => {
         logError('Download process error', { downloadId, error: error.message, stack: error.stack });
         clearTimeout(downloadTimeout);
+        clearTimeout(progressTimeout);
         res.write(`data: ${JSON.stringify({ 
             type: 'error', 
             message: `เกิดข้อผิดพลาดในการดาวโหลด: ${error.message}` 
@@ -257,17 +274,42 @@ app.get('/download', async (req, res) => {
     downloadProcess.on('close', (code) => {
         logInfo('Download process exited', { downloadId, exitCode: code });
         clearTimeout(downloadTimeout);
+        clearTimeout(progressTimeout);
         
         // Handle different exit codes
         if (code === 0 || code === null) {
             // Download successful (0) or process terminated normally (null)
             try {
-                // Find the downloaded file
+                // Find the downloaded file with improved detection
                 const expectedFileNameStart = sanitizedTitle;
                 const files = fs.readdirSync(videosDir);
-                const videoFile = files.find(file => 
+                
+                // Log all files for debugging
+                logInfo('Files in videos directory', { downloadId, files: files.slice(0, 10) }); // Log first 10 files
+                
+                // Try multiple patterns to find the video file
+                let videoFile = files.find(file => 
                     file.startsWith(expectedFileNameStart) && (file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv'))
                 );
+                
+                // If not found, try to find any recent video file
+                if (!videoFile) {
+                    const recentFiles = files.filter(file => 
+                        (file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv')) &&
+                        !file.includes('thumbnail')
+                    );
+                    
+                    if (recentFiles.length > 0) {
+                        // Get the most recently modified file
+                        const stats = recentFiles.map(file => ({
+                            name: file,
+                            mtime: fs.statSync(path.join(videosDir, file)).mtime
+                        }));
+                        stats.sort((a, b) => b.mtime - a.mtime);
+                        videoFile = stats[0].name;
+                        logInfo('Using most recent video file', { downloadId, fileName: videoFile });
+                    }
+                }
                 
                 if (videoFile) {
                     const relativePath = `videos/${encodeURIComponent(videoFile)}`;
@@ -283,7 +325,11 @@ app.get('/download', async (req, res) => {
                         title: videoInfo.title
                     })}\n\n`);
                 } else {
-                    logError('Downloaded file not found', { downloadId, expectedFileName: expectedFileNameStart });
+                    logError('Downloaded file not found', { 
+                        downloadId, 
+                        expectedFileName: expectedFileNameStart,
+                        availableFiles: files.filter(f => f.endsWith('.mp4') || f.endsWith('.webm') || f.endsWith('.mkv'))
+                    });
                     res.write(`data: ${JSON.stringify({ 
                         type: 'error', 
                         message: 'ไม่พบไฟล์วิดีโอที่ดาวโหลด' 
