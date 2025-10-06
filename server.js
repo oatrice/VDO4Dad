@@ -166,11 +166,21 @@ app.get('/download', async (req, res) => {
         '--merge-output-format', 'mp4', // Ensure the final file is mp4
         // Specify ffmpeg location to ensure merging works
         '--ffmpeg-location', ffmpegPath,
-        '--no-warnings' // Suppress warnings
+        '--no-warnings', // Suppress warnings
+        '--verbose', // Add verbose logging for debugging
+        '--print-traffic' // Print HTTP traffic for debugging
     ];
 
     // Start download
     logInfo(`Starting download`, { downloadId, url, options });
+    
+    // Log yt-dlp version and configuration
+    try {
+        const ytDlpVersion = await ytDlpWrap.getVersion();
+        logInfo('yt-dlp version', { downloadId, version: ytDlpVersion });
+    } catch (error) {
+        logWarn('Failed to get yt-dlp version', { downloadId, error: error.message });
+    }
     
     const downloadProcess = ytDlpWrap.exec([
         url,
@@ -236,6 +246,22 @@ app.get('/download', async (req, res) => {
         }
     }, 30000); // Check every 30 seconds
 
+    // Add process health monitoring
+    const processHealthInterval = setInterval(() => {
+        if (downloadProcess && downloadProcess.ytDlpProcess) {
+            const isRunning = !downloadProcess.ytDlpProcess.killed && 
+                             downloadProcess.ytDlpProcess.exitCode === null;
+            
+            if (!isRunning) {
+                logWarn('yt-dlp process is not running', { 
+                    downloadId, 
+                    killed: downloadProcess.ytDlpProcess.killed,
+                    exitCode: downloadProcess.ytDlpProcess.exitCode
+                });
+            }
+        }
+    }, 5000); // Check every 5 seconds
+
     // Send initial progress
     res.write(`data: ${JSON.stringify({ 
         type: 'progress', 
@@ -269,6 +295,7 @@ app.get('/download', async (req, res) => {
         logError('Download process error', { downloadId, error: error.message, stack: error.stack });
         clearTimeout(downloadTimeout);
         clearTimeout(progressTimeout);
+        clearInterval(processHealthInterval);
         res.write(`data: ${JSON.stringify({ 
             type: 'error', 
             message: `เกิดข้อผิดพลาดในการดาวโหลด: ${error.message}` 
@@ -287,10 +314,21 @@ app.get('/download', async (req, res) => {
         });
     }
 
+    // Handle stdout output for debugging
+    if (downloadProcess.ytDlpProcess && downloadProcess.ytDlpProcess.stdout) {
+        downloadProcess.ytDlpProcess.stdout.on('data', (data) => {
+            const output = data.toString();
+            if (output.trim()) {
+                logInfo('yt-dlp stdout output', { downloadId, stdout: output.trim() });
+            }
+        });
+    }
+
     downloadProcess.on('close', (code) => {
         logInfo('Download process exited', { downloadId, exitCode: code });
         clearTimeout(downloadTimeout);
         clearTimeout(progressTimeout);
+        clearInterval(processHealthInterval);
         
         // Handle different exit codes
         if (code === 0 || code === null) {
