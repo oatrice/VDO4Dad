@@ -5,6 +5,38 @@ const fs = require('fs');
 const YTDlpWrap = require('yt-dlp-wrap').default;
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 
+// Logging system
+const logDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+}
+
+const logFile = path.join(logDir, 'server.log');
+
+function writeLog(level, message, data = null) {
+    const timestamp = new Date().toISOString();
+    const logEntry = `[${timestamp}] [${level}] ${message}`;
+    const fullLogEntry = data ? `${logEntry} ${JSON.stringify(data)}` : logEntry;
+    
+    // Write to file
+    fs.appendFileSync(logFile, fullLogEntry + '\n');
+    
+    // Also write to console for development
+    console.log(fullLogEntry);
+}
+
+function logInfo(message, data = null) {
+    writeLog('INFO', message, data);
+}
+
+function logError(message, data = null) {
+    writeLog('ERROR', message, data);
+}
+
+function logWarn(message, data = null) {
+    writeLog('WARN', message, data);
+}
+
 const app = express();
 const PORT = 3000;
 
@@ -44,9 +76,9 @@ function updateVideosJson(videoInfo) {
         });
         
         fs.writeFileSync(videosPath, JSON.stringify(videos, null, 4));
-        console.log('Updated videos.json with new video:', videoInfo.title);
+        logInfo('Updated videos.json with new video', { title: videoInfo.title });
     } catch (error) {
-        console.error('Error updating videos.json:', error);
+        logError('Error updating videos.json', { error: error.message });
     }
 }
 
@@ -82,9 +114,9 @@ app.get('/download', async (req, res) => {
     try {
         // 1. Get video metadata first to get the correct title
         videoInfo = await ytDlpWrap.getVideoInfo(url);
-        console.log('Fetched video info:', videoInfo.title);
+        logInfo('Fetched video info', { title: videoInfo.title, url });
     } catch (error) {
-        console.error('Failed to get video info:', error);
+        logError('Failed to get video info', { error: error.message, url });
         res.write(`data: ${JSON.stringify({ type: 'error', message: 'ไม่สามารถดึงข้อมูลวิดีโอได้' })}\n\n`);
         res.end();
         return;
@@ -111,6 +143,8 @@ app.get('/download', async (req, res) => {
     ];
 
     // Start download
+    logInfo(`Starting download`, { downloadId, url, options });
+    
     const downloadProcess = ytDlpWrap.exec([
         url,
         ...options
@@ -123,9 +157,9 @@ app.get('/download', async (req, res) => {
         startTime: Date.now()
     });
 
-
     // Check if downloadProcess exists
     if (!downloadProcess) {
+        logError('Failed to create download process', { downloadId });
         res.write(`data: ${JSON.stringify({ 
             type: 'error', 
             message: 'ไม่สามารถเริ่มการดาวโหลดได้' 
@@ -134,6 +168,20 @@ app.get('/download', async (req, res) => {
         activeDownloads.delete(downloadId);
         return;
     }
+
+    // Add timeout to prevent hanging
+    const downloadTimeout = setTimeout(() => {
+        logError('Download timeout after 5 minutes', { downloadId });
+        if (downloadProcess && downloadProcess.ytDlpProcess) {
+            downloadProcess.ytDlpProcess.kill('SIGTERM');
+        }
+        res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: 'การดาวโหลดใช้เวลานานเกินไป (5 นาที)' 
+        })}\n\n`);
+        res.end();
+        activeDownloads.delete(downloadId);
+    }, 300000); // 5 minutes timeout
 
     // Send initial progress
     res.write(`data: ${JSON.stringify({ 
@@ -144,6 +192,7 @@ app.get('/download', async (req, res) => {
     
     // Use the 'progress' event for accurate progress reporting
     downloadProcess.on('progress', (progress) => {
+        logInfo('Download progress', { downloadId, percent: progress.percent });
         res.write(`data: ${JSON.stringify({
             type: 'progress',
             percent: progress.percent,
@@ -153,7 +202,8 @@ app.get('/download', async (req, res) => {
 
     // Handle process events
     downloadProcess.on('error', (error) => {
-        console.log('Download process error:', error);
+        logError('Download process error', { downloadId, error: error.message });
+        clearTimeout(downloadTimeout);
         res.write(`data: ${JSON.stringify({ 
             type: 'error', 
             message: `เกิดข้อผิดพลาด: ${error.message}` 
@@ -163,7 +213,8 @@ app.get('/download', async (req, res) => {
     });
 
     downloadProcess.on('close', (code) => {
-        console.log(`Download process exited with code ${code}`);
+        logInfo('Download process exited', { downloadId, exitCode: code });
+        clearTimeout(downloadTimeout);
         
         if (code === 0) {
             // Download successful
@@ -181,6 +232,7 @@ app.get('/download', async (req, res) => {
                     // Update videos.json
                     updateVideosJson(videoInfo);
                     
+                    logInfo('Download completed successfully', { downloadId, fileName: videoFile });
                     res.write(`data: ${JSON.stringify({ 
                         type: 'done', 
                         message: 'ดาวโหลดสำเร็จ!',
@@ -188,18 +240,21 @@ app.get('/download', async (req, res) => {
                         title: videoInfo.title
                     })}\n\n`);
                 } else {
+                    logError('Downloaded file not found', { downloadId, expectedFileName: expectedFileNameStart });
                     res.write(`data: ${JSON.stringify({ 
                         type: 'error', 
                         message: 'ไม่พบไฟล์วิดีโอที่ดาวโหลด' 
                     })}\n\n`);
                 }
             } catch (error) {
+                logError('Error processing completed download', { downloadId, error: error.message });
                 res.write(`data: ${JSON.stringify({ 
                     type: 'error', 
                     message: `เกิดข้อผิดพลาด: ${error.message}` 
                 })}\n\n`);
             }
         } else {
+            logError('Download failed with exit code', { downloadId, exitCode: code });
             res.write(`data: ${JSON.stringify({ 
                 type: 'error', 
                 message: `การดาวโหลดล้มเหลว (exit code: ${code})` 
@@ -275,14 +330,23 @@ app.get('/health', (req, res) => {
 
 // Start server
 app.listen(PORT, () => {
+    logInfo('Backend server started', { 
+        port: PORT, 
+        staticPath: path.join(__dirname, 'src'),
+        videosPath: path.join(__dirname, 'src', 'videos'),
+        serverLogFile: logFile,
+        frontendLogFile: path.join(__dirname, 'logs', 'frontend.log')
+    });
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
     console.log(`📁 Serving static files from: ${path.join(__dirname, 'src')}`);
     console.log(`🎥 Video downloads will be saved to: ${path.join(__dirname, 'src', 'videos')}`);
+    console.log(`📝 Server logs will be saved to: ${logFile}`);
     console.log(`📝 Frontend logs will be saved to: ${path.join(__dirname, 'logs', 'frontend.log')}`);
 });
 
 // Graceful shutdown
 process.on('SIGINT', () => {
+    logInfo('Server shutting down gracefully');
     console.log('\n🛑 Shutting down server...');
     
     // Kill all active downloads
