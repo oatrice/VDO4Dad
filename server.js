@@ -123,6 +123,7 @@ app.get('/download', async (req, res) => {
     // Use frontend download ID if provided, otherwise generate new one
     const downloadId = frontendDownloadId ? `backend-${frontendDownloadId}` : `download-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const videosDir = path.join(__dirname, 'src', 'videos');
+    let downloadStage = 'video';
 
     // Heartbeat to keep the connection alive
     const heartbeatInterval = setInterval(() => {
@@ -163,7 +164,8 @@ app.get('/download', async (req, res) => {
 
     // Configure yt-dlp options
     const options = [
-        '--output', outputPath,
+        '--output',
+        outputPath,
         // Prioritize MP4 format, up to 720p. Fallback to best available.
         '--format', 'bestvideo[height<=720][ext=mp4][protocol!=m3u8]+bestaudio[ext=m4a][protocol!=m3u8]/best[height<=720][ext=mp4][protocol!=m3u8]/best[height<=720][protocol!=m3u8]',
         '--no-playlist', // Download only single video, not playlist
@@ -291,7 +293,7 @@ app.get('/download', async (req, res) => {
     res.write(`data: ${JSON.stringify({ 
         type: 'progress', 
         percent: 0,
-        message: 'กำลังเริ่มดาวโหลด...'
+        message: 'กำลังเริ่มดาวโหลด...' 
     })}\n\n`);
     
     // Use the 'progress' event for accurate progress reporting
@@ -299,16 +301,16 @@ app.get('/download', async (req, res) => {
         lastProgressTime = Date.now();
         lastProgressPercent = progress.percent;
         
-        // Determine the stage of the download from the progress object
-        let message = `กำลังดาวน์โหลด... ${progress.percent}%`;
-        if (progress.status === 'downloading') {
-            if (progress.fragment_index === 1) {
-                message = `[1/2] กำลังดาวน์โหลดวิดีโอ... ${progress.percent}%`;
-            } else if (progress.fragment_index === 2) {
-                message = `[2/2] กำลังดาวน์โหลดเสียง... ${progress.percent}%`;
-            }
-        } else if (progress.status === 'finished' && progress.fragment_count > 1) {
-            message = `กำลังรวมไฟล์วิดีโอและเสียง...`;
+        const percent = progress.percent;
+        let message;
+        if (downloadStage === 'video') {
+            message = `[1/3] กำลังดาวน์โหลดวิดีโอ... ${percent}%`;
+        } else if (downloadStage === 'audio') {
+            message = `[2/3] กำลังดาวน์โหลดเสียง... ${percent}%`;
+        } else if (downloadStage === 'merge') {
+            message = `[3/3] กำลังรวมไฟล์...`;
+        } else {
+            message = `กำลังดาวน์โหลด... ${percent}%`;
         }
 
         logInfo('Download progress', { downloadId, percent: progress.percent, message: message, frontendId: frontendDownloadId });
@@ -358,8 +360,18 @@ app.get('/download', async (req, res) => {
 
     // Handle stdout output for debugging
     if (downloadProcess.ytDlpProcess && downloadProcess.ytDlpProcess.stdout) {
+        let destinationCount = 0;
         downloadProcess.ytDlpProcess.stdout.on('data', (data) => {
             const output = data.toString();
+            if (output.includes('[download] Destination:')) {
+                destinationCount++;
+                if (destinationCount === 2) {
+                    downloadStage = 'audio';
+                }
+            }
+            if (output.includes('[Merger]')) {
+                downloadStage = 'merge';
+            }
             if (output.trim()) {
                 logInfo('yt-dlp stdout output', { downloadId, stdout: output.trim() });
             }
