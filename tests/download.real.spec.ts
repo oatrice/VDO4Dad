@@ -9,7 +9,7 @@ test.describe('Download flow (real)', () => {
         await page.goto('/');
 
         // Short reliable public video (adjustable)
-        const testUrl = 'https://youtu.be/sgs4Ebj0MTw';
+        const testUrl = 'https://www.youtube.com/watch?v=COcc7SZsRyQ';
         await page.fill('#url-input', testUrl);
         await page.click('#download-btn');
 
