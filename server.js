@@ -13,6 +13,12 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('src'));
 
+// Create logs directory if it doesn't exist
+const logsDir = path.join(__dirname, 'logs');
+if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+}
+
 // Initialize yt-dlp
 const ytDlpWrap = new YTDlpWrap('/opt/homebrew/bin/yt-dlp');
 
@@ -244,6 +250,24 @@ app.post('/downloads/:id/cancel', (req, res) => {
     }
 });
 
+// Endpoint for receiving logs from the frontend
+app.post('/log', (req, res) => {
+    const { level, message, data } = req.body;
+    const logFilePath = path.join(logsDir, 'frontend.log');
+    const timestamp = new Date().toISOString();
+    
+    let logEntry = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+    if (data) {
+        // Stringify object data for better readability in the log file
+        logEntry += ` | Data: ${typeof data === 'object' ? JSON.stringify(data) : data}\n`;
+    } else {
+        logEntry += '\n';
+    }
+
+    fs.appendFile(logFilePath, logEntry, (err) => { /* We don't need to handle error here for this case */ });
+    res.sendStatus(204); // No Content
+});
+
 // Health check endpoint
 app.get('/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
@@ -254,6 +278,7 @@ app.listen(PORT, () => {
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
     console.log(`📁 Serving static files from: ${path.join(__dirname, 'src')}`);
     console.log(`🎥 Video downloads will be saved to: ${path.join(__dirname, 'src', 'videos')}`);
+    console.log(`📝 Frontend logs will be saved to: ${path.join(__dirname, 'logs', 'frontend.log')}`);
 });
 
 // Graceful shutdown

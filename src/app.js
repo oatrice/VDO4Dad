@@ -111,6 +111,18 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadBtn.textContent = 'ดาวน์โหลดวิดีโอ';
     });
 
+    // Function to send logs to the server
+    function logToServer(level, message, data = null) {
+        // Also log to console for real-time debugging in the browser
+        console[level](message, data || '');
+
+        fetch('http://localhost:3000/log', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ level, message, data }),
+        }).catch(err => console.error('Failed to send log to server:', err)); // Log failure to send log
+    }
+
     // Function to download a video from a URL
     function downloadVideo(url) {
         return new Promise((resolve, reject) => {
@@ -122,27 +134,39 @@ document.addEventListener('DOMContentLoaded', () => {
             // เชื่อมต่อกับ Backend ผ่าน Server-Sent Events
             const eventSource = new EventSource(`http://localhost:3000/download?url=${encodeURIComponent(url)}`);
 
+            eventSource.onopen = () => {
+                logToServer('log', `[EventSource] Connection opened for: ${url}`);
+            };
+
             eventSource.onmessage = (event) => {
+                logToServer('log', `[EventSource] Message received for ${url}`, event.data);
                 const data = JSON.parse(event.data);
 
                 switch (data.type) {
                     case 'start':
+                        logToServer('log', `[EventSource] Start event for ${url}`, data.message);
                         statusText.textContent = `[${data.message}] ${fileName}`;
                         break;
                     case 'progress':
+                        // Log progress only on significant changes to avoid flooding the console
+                        if (Math.round(data.percent) % 5 === 0) {
+                            logToServer('log', `[EventSource] Progress event for ${url}`, `${data.percent}%`);
+                        }
                         const percent = Math.round(data.percent);
                         progressBar.style.width = `${percent}%`;
                         progressBar.textContent = `${percent}%`;
                         break;
                     case 'done':
+                        logToServer('log', `[EventSource] Done event for ${url}`, data);
                         statusElement.className = 'download-status-item success';
                         statusElement.innerHTML = `✅ ดาวน์โหลด '${data.title || fileName}' สำเร็จ!`;
                         eventSource.close();
                         // Refresh the video list to show the new video
-                        setTimeout(() => location.reload(), 1500);
+                        setTimeout(() => location.reload(), 2000);
                         resolve(url); // Success
                         break;
                     case 'error':
+                        logToServer('error', `[EventSource] Error event for ${url}`, data.message);
                         statusElement.className = 'download-status-item error';
                         statusElement.innerHTML = `❌ เกิดข้อผิดพลาดในการดาวน์โหลด '${fileName}': ${data.message}`;
                         eventSource.close();
@@ -152,7 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             eventSource.onerror = (err) => {
-                console.error("EventSource failed:", err);
+                logToServer('error', `[EventSource] Connection error for ${url}`, err);
                 statusElement.className = 'download-status-item error';
                 statusElement.innerHTML = `❌ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ดาวน์โหลดได้`;
                 eventSource.close();
