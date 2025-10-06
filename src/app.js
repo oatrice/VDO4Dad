@@ -171,6 +171,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             statusElement.className = 'download-status-item success';
                             statusElement.innerHTML = `✅ ดาวน์โหลด '${data.title || fileName}' สำเร็จ!`;
                             eventSource.close();
+                            logToServer('log', `[EventSource] [${downloadId}] Session ended for ${url}.`);
                             // Refresh the video list to show the new video
                             setTimeout(() => location.reload(), 2000);
                             resolve(url); // Success
@@ -178,6 +179,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     case 'error':
                         logToServer('error', `[EventSource] [${downloadId}] Error event for ${url}`, data.message);
                         eventSource.close();
+                        logToServer('log', `[EventSource] [${downloadId}] Session ended with error for ${url}.`);
                         
                         // Retry logic for certain types of errors
                         if (retryCount < 2 && (
@@ -213,6 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
             eventSource.onerror = (err) => {
                 logToServer('error', `[EventSource] [${downloadId}] Connection error for ${url}`, err);
                 eventSource.close();
+                logToServer('log', `[EventSource] [${downloadId}] Session ended with connection error for ${url}.`);
                 
                 // Retry logic for connection errors
                 if (retryCount < 2) {
@@ -237,6 +240,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (eventSource.readyState !== EventSource.CLOSED) {
                     logToServer('error', `[EventSource] [${downloadId}] Connection timeout for ${url}`);
                     eventSource.close();
+                    logToServer('log', `[EventSource] [${downloadId}] Session ended with timeout for ${url}.`);
                     
                     // Retry logic for timeout errors
                     if (retryCount < 2) {
