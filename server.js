@@ -123,6 +123,11 @@ app.get('/download', async (req, res) => {
     // Use frontend download ID if provided, otherwise generate new one
     const downloadId = frontendDownloadId ? `backend-${frontendDownloadId}` : `download-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const videosDir = path.join(__dirname, 'src', 'videos');
+
+    // Heartbeat to keep the connection alive
+    const heartbeatInterval = setInterval(() => {
+        res.write('event: ping\ndata: {}\n\n');
+    }, 3000);
     
     // Log correlation between frontend and backend IDs
     if (frontendDownloadId) {
@@ -329,6 +334,7 @@ app.get('/download', async (req, res) => {
         clearTimeout(downloadTimeout);
         clearTimeout(progressTimeout);
         clearInterval(processHealthInterval);
+        clearInterval(heartbeatInterval); // Stop heartbeat on error
         res.write(`data: ${JSON.stringify({ 
             type: 'error', 
             message: `เกิดข้อผิดพลาดในการดาวโหลด: ${error.message}` 
@@ -365,6 +371,7 @@ app.get('/download', async (req, res) => {
         clearTimeout(downloadTimeout);
         clearTimeout(progressTimeout);
         clearInterval(processHealthInterval);
+        clearInterval(heartbeatInterval); // Stop heartbeat on close
         
         // Handle different exit codes
         if (code === 0) {
@@ -502,6 +509,7 @@ app.get('/download', async (req, res) => {
 
     // Handle client disconnect
     req.on('close', () => {
+        clearInterval(heartbeatInterval); // Stop heartbeat on client disconnect
         // Do not kill the download on SSE disconnect; allow it to continue in the background
         logWarn('SSE client disconnected; keeping download running', { downloadId, url });
     });

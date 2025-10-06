@@ -5,7 +5,7 @@
   "main": "src/index.html",
   "scripts": {
     "start": "http-server src -p 8080 -o",
-    "dev": "live-server src --port=8080 --open=/",
+    "dev": "live-server src --port=8080 --open=/ --ignore=videos",
     "serve": "http-server src -p 8080",
     "backend": "node server.js",
     "dev-full": "concurrently \"npm run backend\" \"npm run dev\"",
