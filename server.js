@@ -289,13 +289,26 @@ app.get('/download', async (req, res) => {
     downloadProcess.on('progress', (progress) => {
         lastProgressTime = Date.now();
         lastProgressPercent = progress.percent;
-        logInfo('Download progress', { downloadId, percent: progress.percent, frontendId: frontendDownloadId });
+        
+        // Determine the stage of the download from the progress object
+        let message = `กำลังดาวน์โหลด... ${progress.percent}%`;
+        if (progress.status === 'downloading') {
+            if (progress.fragment_index === 1) {
+                message = `[1/2] กำลังดาวน์โหลดวิดีโอ... ${progress.percent}%`;
+            } else if (progress.fragment_index === 2) {
+                message = `[2/2] กำลังดาวน์โหลดเสียง... ${progress.percent}%`;
+            }
+        } else if (progress.status === 'finished' && progress.fragment_count > 1) {
+            message = `กำลังรวมไฟล์วิดีโอและเสียง...`;
+        }
+
+        logInfo('Download progress', { downloadId, percent: progress.percent, message: message, frontendId: frontendDownloadId });
         
         // Send progress to frontend
         const progressData = {
             type: 'progress',
             percent: progress.percent,
-            message: `กำลังดาวน์โหลด... ${progress.percent}%`
+            message: message
         };
         
         try {
