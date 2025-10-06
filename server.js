@@ -258,9 +258,16 @@ app.get('/download', async (req, res) => {
                     killed: downloadProcess.ytDlpProcess.killed,
                     exitCode: downloadProcess.ytDlpProcess.exitCode
                 });
+            } else {
+                // Log process health every 10 seconds for debugging
+                logInfo('yt-dlp process health check', { 
+                    downloadId, 
+                    pid: downloadProcess.ytDlpProcess.pid,
+                    isRunning: true
+                });
             }
         }
-    }, 5000); // Check every 5 seconds
+    }, 10000); // Check every 10 seconds
 
     // Send initial progress
     res.write(`data: ${JSON.stringify({ 
@@ -325,12 +332,28 @@ app.get('/download', async (req, res) => {
     }
 
     downloadProcess.on('close', (code) => {
-        logInfo('Download process exited', { downloadId, exitCode: code });
+        logInfo('Download process exited', { downloadId, exitCode: code, frontendId: frontendDownloadId });
         clearTimeout(downloadTimeout);
         clearTimeout(progressTimeout);
         clearInterval(processHealthInterval);
         
         // Handle different exit codes
+        if (code === 0) {
+            // Successful completion
+            logInfo('Download completed successfully', { downloadId, exitCode: code });
+        } else if (code === null) {
+            // Process terminated (possibly by system or user)
+            logWarn('Download process terminated unexpectedly', { downloadId, exitCode: code, frontendId: frontendDownloadId });
+            
+            // For frontend requests, try to find any recently created files
+            if (frontendDownloadId) {
+                logInfo('Attempting to recover from unexpected termination for frontend request', { downloadId, frontendId: frontendDownloadId });
+            }
+        } else {
+            // Error exit code
+            logError('Download failed with exit code', { downloadId, exitCode: code, frontendId: frontendDownloadId });
+        }
+        
         if (code === 0 || code === null) {
             // Download successful (0) or process terminated normally (null)
             try {
@@ -415,10 +438,18 @@ app.get('/download', async (req, res) => {
             }
         } else {
             // Download failed with non-zero exit code
-            logError('Download failed with exit code', { downloadId, exitCode: code });
+            logError('Download failed with exit code', { downloadId, exitCode: code, frontendId: frontendDownloadId });
+            
+            // For frontend requests, provide more detailed error information
+            const errorMessage = frontendDownloadId ? 
+                `การดาวโหลดล้มเหลว (รหัส: ${code}). กรุณาลองใหม่อีกครั้ง` :
+                `การดาวโหลดล้มเหลว (exit code: ${code})`;
+                
             res.write(`data: ${JSON.stringify({ 
                 type: 'error', 
-                message: `การดาวโหลดล้มเหลว (exit code: ${code})` 
+                message: errorMessage,
+                exitCode: code,
+                retryable: frontendDownloadId ? true : false
             })}\n\n`);
         }
         

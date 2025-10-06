@@ -255,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         reject(new Error('Connection timeout'));
                     }
                 }
-            }, 30000); // 30 seconds timeout
+            }, 120000); // เพิ่มเป็น 120 seconds timeout เพื่อรองรับ sleep period และการดาวโหลด
 
             // Clear timeout when connection is established
             eventSource.onopen = () => {
