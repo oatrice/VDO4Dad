@@ -203,6 +203,9 @@ app.get('/download', async (req, res) => {
         })}\n\n`);
         res.end();
         activeDownloads.delete(downloadId);
+        
+        // Add session separator
+        logInfo('=== Download Session Ended (Error) ===', { downloadId, frontendId: frontendDownloadId });
         return;
     }
 
@@ -215,6 +218,9 @@ app.get('/download', async (req, res) => {
         })}\n\n`);
         res.end();
         activeDownloads.delete(downloadId);
+        
+        // Add session separator
+        logInfo('=== Download Session Ended (Error) ===', { downloadId, frontendId: frontendDownloadId });
         return;
     }
 
@@ -230,6 +236,9 @@ app.get('/download', async (req, res) => {
         })}\n\n`);
         res.end();
         activeDownloads.delete(downloadId);
+        
+        // Add session separator
+        logInfo('=== Download Session Ended (Timeout) ===', { downloadId, frontendId: frontendDownloadId });
     }, 300000); // 5 minutes timeout
 
     // Add progress monitoring to detect stuck downloads
@@ -309,6 +318,9 @@ app.get('/download', async (req, res) => {
         })}\n\n`);
         res.end();
         activeDownloads.delete(downloadId);
+        
+        // Add session separator
+        logInfo('=== Download Session Ended (Process Error) ===', { downloadId, frontendId: frontendDownloadId });
     });
 
     // Handle stderr output for better error reporting
@@ -455,6 +467,9 @@ app.get('/download', async (req, res) => {
         
         res.end();
         activeDownloads.delete(downloadId);
+        
+        // Add session separator
+        logInfo('=== Download Session Ended ===', { downloadId, frontendId: frontendDownloadId });
     });
 
     // Handle client disconnect
