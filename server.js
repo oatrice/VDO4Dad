@@ -160,7 +160,7 @@ app.get('/download', async (req, res) => {
     const options = [
         '--output', outputPath,
         // Prioritize MP4 format, up to 720p. Fallback to best available.
-        '--format', 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]',
+        '--format', 'bestvideo[height<=720][ext=mp4][protocol!=m3u8]+bestaudio[ext=m4a][protocol!=m3u8]/best[height<=720][ext=mp4][protocol!=m3u8]/best[height<=720][protocol!=m3u8]',
         '--no-playlist', // Download only single video, not playlist
         '--write-thumbnail', // Download thumbnail
         '--merge-output-format', 'mp4', // Ensure the final file is mp4
@@ -168,7 +168,11 @@ app.get('/download', async (req, res) => {
         '--ffmpeg-location', ffmpegPath,
         '--no-warnings', // Suppress warnings
         '--verbose', // Add verbose logging for debugging
-        '--print-traffic' // Print HTTP traffic for debugging
+        '--print-traffic', // Print HTTP traffic for debugging
+        // Retries for resiliency
+        '--retries', '10',
+        '--fragment-retries', '10',
+        '--retry-sleep', '1'
     ];
 
     // Start download
@@ -379,8 +383,8 @@ app.get('/download', async (req, res) => {
             logError('Download failed with exit code', { downloadId, exitCode: code, frontendId: frontendDownloadId });
         }
         
-        if (code === 0 || code === null) {
-            // Download successful (0) or process terminated normally (null)
+        if (code === 0) {
+            // Download successful (0)
             try {
                 // Find the downloaded file with improved detection
                 const expectedFileNameStart = sanitizedTitle;
@@ -461,6 +465,17 @@ app.get('/download', async (req, res) => {
                     message: `เกิดข้อผิดพลาด: ${error.message}` 
                 })}\n\n`);
             }
+        } else if (code === null) {
+            // Process terminated unexpectedly; treat as retryable failure
+            logWarn('Download process terminated unexpectedly', { downloadId, exitCode: code, frontendId: frontendDownloadId });
+            const errorMessage = frontendDownloadId ?
+                'การดาวโหลดถูกยุติกะทันหัน โปรดลองใหม่อีกครั้ง' :
+                'การดาวโหลดถูกยุติกะทันหัน';
+            res.write(`data: ${JSON.stringify({ 
+                type: 'error', 
+                message: errorMessage,
+                retryable: true
+            })}\n\n`);
         } else {
             // Download failed with non-zero exit code
             logError('Download failed with exit code', { downloadId, exitCode: code, frontendId: frontendDownloadId });
@@ -487,13 +502,8 @@ app.get('/download', async (req, res) => {
 
     // Handle client disconnect
     req.on('close', () => {
-        if (activeDownloads.has(downloadId)) {
-            const download = activeDownloads.get(downloadId);
-            if (download.process) {
-                download.process.ytDlpProcess.kill();
-            }
-            activeDownloads.delete(downloadId);
-        }
+        // Do not kill the download on SSE disconnect; allow it to continue in the background
+        logWarn('SSE client disconnected; keeping download running', { downloadId, url });
     });
 });
 
