@@ -92,23 +92,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const downloadPromises = urls.map(url => downloadVideo(url.trim()));
 
-        const results = await Promise.allSettled(downloadPromises);
+        try {
+            const results = await Promise.allSettled(downloadPromises);
 
-        const failedUrls = results
-            .map((result, index) => {
-                if (result.status === 'rejected') {
-                    return urls[index]; // Return the original URL that failed
-                }
-                return null;
-            })
-            .filter(url => url !== null);
+            const failedUrls = results
+                .map((result, index) => {
+                    if (result.status === 'rejected') {
+                        logToServer('error', `[Session] Download failed permanently for URL: ${urls[index]}`, { reason: result.reason.message });
+                        return urls[index]; // Return the original URL that failed
+                    } else {
+                        logToServer('info', `[Session] Download finished for URL: ${urls[index]}`);
+                        return null;
+                    }
+                })
+                .filter(url => url !== null);
 
-        // Update textarea with failed URLs
-        urlInput.value = failedUrls.join('\n');
+            // Update textarea with failed URLs
+            urlInput.value = failedUrls.join('\n');
+        } finally {
+            // Re-enable button
+            downloadBtn.disabled = false;
+            downloadBtn.textContent = 'ดาวน์โหลดวิดีโอ';
+        }
 
-        // Re-enable button
-        downloadBtn.disabled = false;
-        downloadBtn.textContent = 'ดาวน์โหลดวิดีโอ';
     });
 
     // Function to send logs to the server
@@ -116,11 +122,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // Also log to console for real-time debugging in the browser
         console[level](message, data || '');
 
-        fetch('http://localhost:3000/log', {
+        // Map 'log' to 'info' for consistency if needed, or handle as is.
+        const logLevel = level === 'log' ? 'info' : level;
+
+        // Use a try-catch block to prevent unhandled promise rejections
+        // if the log request itself fails.
+        try { fetch('http://localhost:3000/log', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ level, message, data }),
-        }).catch(err => console.error('Failed to send log to server:', err)); // Log failure to send log
+        }); } catch (err) { console.error('Failed to send log to server:', err); }
     }
 
     // Function to download a video from a URL with retry mechanism
@@ -166,7 +177,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                         switch (data.type) {
                             case 'start':
-                                logToServer('log', `[EventSource] [${downloadId}] Start event for ${url}`, data.message);
+                                logToServer('info', `[EventSource] [${downloadId}] Start event for ${url}`, data.message);
                                 statusText.textContent = `[${data.message}] ${fileName}`;
                                 break;
                             case 'progress':
@@ -176,7 +187,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 statusText.textContent = `[${data.message || 'กำลังดาวน์โหลด...'}] ${fileName} - ${percent}%`;
                                 break;
                             case 'done':
-                                logToServer('log', `[EventSource] [${downloadId}] Done event for ${url}`, data);
+                                logToServer('info', `[EventSource] [${downloadId}] Done event for ${url}`, data);
                                 statusElement.className = 'download-status-item success';
                                 statusElement.innerHTML = `✅ ดาวน์โหลด '${data.title || fileName}' สำเร็จ!`;
                                 eventSource.close();
@@ -204,7 +215,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
 
                 eventSource.onopen = () => {
-                    logToServer('log', `[EventSource] [${downloadId}] Connection opened for: ${url}`);
+                    logToServer('info', `[EventSource] [${downloadId}] Connection opened for: ${url}`);
                 };
             }
 
