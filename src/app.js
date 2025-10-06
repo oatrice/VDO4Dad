@@ -11,6 +11,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let videos = [];
     let currentVideoIndex = 0;
+    let activeDownloads = new Set(); // For tracking incomplete downloads
+
+    // Add unload listener to log incomplete downloads
+    window.addEventListener('beforeunload', () => {
+        if (activeDownloads.size > 0) {
+            const message = `Page is closing with ${activeDownloads.size} active downloads. These will be interrupted.`;
+            // Use beacon for reliability on unload
+            logToServer('warn', `[Incomplete] ${message}`, { activeIds: [...activeDownloads] }, true);
+        }
+    });
 
     // Fetch video data from videos.json
     fetch('./data/videos.json')
@@ -80,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Split by comma or newline, then filter out empty strings
         const urls = urlsText.split(/[\n,]+/).filter(url => url.trim() !== '');
-        
+
         if (urls.length === 0) {
             alert('ไม่พบ URL ที่ถูกต้อง');
             return;
@@ -90,18 +100,32 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadBtn.disabled = true;
         downloadBtn.textContent = 'กำลังดาวน์โหลด...';
 
-        const downloadPromises = urls.map(url => downloadVideo(url.trim()));
+        let completedCount = 0;
+        const totalDownloads = urls.length;
+        const batchId = `batch-${Date.now()}`;
+        logToServer('info', `[Batch Start] ID: ${batchId}. Starting downloads for ${totalDownloads} URLs.`);
+
+        const onDownloadComplete = () => {
+            completedCount++;
+            logToServer('info', `[Batch Progress] ID: ${batchId}. ${completedCount} of ${totalDownloads} downloads processed.`);
+        };
+
+        const downloadPromises = urls.map(url => downloadVideo(url.trim(), onDownloadComplete));
 
         try {
             const results = await Promise.allSettled(downloadPromises);
 
+            logToServer('info', `[Batch End] ID: ${batchId}. All downloads processed.`);
+
             const failedUrls = results
-                .map((result, index) => {
+                .map((result, index) => { // This part runs only after ALL downloads are settled.
                     if (result.status === 'rejected') {
-                        logToServer('error', `[Session] Download failed permanently for URL: ${urls[index]}`, { reason: result.reason.message });
+                        // The 'end session' log for each download is now handled inside downloadVideo's promise.
+                        // This log remains as a final summary.
+                        logToServer('error', `[Batch Summary] ID: ${batchId}. Download failed for URL: ${urls[index]}`, { reason: result.reason.message });
                         return urls[index]; // Return the original URL that failed
                     } else {
-                        logToServer('info', `[Session] Download finished for URL: ${urls[index]}`);
+                        logToServer('info', `[Batch Summary] ID: ${batchId}. Download finished for URL: ${urls[index]}`);
                         return null;
                     }
                 })
@@ -114,28 +138,39 @@ document.addEventListener('DOMContentLoaded', () => {
             downloadBtn.disabled = false;
             downloadBtn.textContent = 'ดาวน์โหลดวิดีโอ';
         }
-
     });
 
     // Function to send logs to the server
-    function logToServer(level, message, data = null) {
-        // Also log to console for real-time debugging in the browser
-        console[level](message, data || '');
+    function logToServer(level, message, data = null, useBeacon = false) {
+        const consoleMethod = console[level] || console.log;
+        consoleMethod(message, data || '');
 
-        // Map 'log' to 'info' for consistency if needed, or handle as is.
         const logLevel = level === 'log' ? 'info' : level;
+        const body = JSON.stringify({ level: logLevel, message, data });
 
-        // Use a try-catch block to prevent unhandled promise rejections
-        // if the log request itself fails.
-        try { fetch('http://localhost:3000/log', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ level, message, data }),
-        }); } catch (err) { console.error('Failed to send log to server:', err); }
+        if (useBeacon && navigator.sendBeacon) {
+            try {
+                // Use sendBeacon for reliability on page unload
+                navigator.sendBeacon('http://localhost:3000/log', body);
+            } catch (e) {
+                // Fallback for cases where beacon fails (e.g., data too large)
+                fetch('http://localhost:3000/log', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body,
+                }).catch(err => console.error('Failed to send log to server:', err));
+            }
+        } else {
+            fetch('http://localhost:3000/log', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body,
+            }).catch(err => console.error('Failed to send log to server:', err));
+        }
     }
 
     // Function to download a video from a URL with retry mechanism
-    function downloadVideo(url) {
+    function downloadVideo(url, onCompleteCallback) {
         return new Promise((resolve, reject) => {
             const MAX_RETRIES = 5;
             let retryCount = 0;
@@ -144,10 +179,13 @@ document.addEventListener('DOMContentLoaded', () => {
             const statusElement = createStatusElement(fileName);
             const progressBar = statusElement.querySelector('.progress-bar');
             const statusText = statusElement.querySelector('span');
-            
+
             // Generate a unique download ID for this session
             const downloadId = `frontend-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            
+            activeDownloads.add(downloadId); // Add to active set
+
+            logToServer('info', `[Session Start] Download session started for URL: ${url}`, { downloadId });
+
             function attemptDownload() {
                 if (retryCount > 0) {
                     statusText.textContent = `[ลองใหม่ครั้งที่ ${retryCount}/${MAX_RETRIES}] ${fileName}`;
@@ -167,6 +205,9 @@ document.addEventListener('DOMContentLoaded', () => {
                         logToServer('error', `[EventSource] [${downloadId}] Download failed for ${url} after ${MAX_RETRIES} retries.`, { error: errorMessage });
                         statusElement.className = 'download-status-item error';
                         statusElement.innerHTML = `❌ ดาวน์โหลด '${fileName}' ล้มเหลว: ${errorMessage}`;
+                        logToServer('error', `[Session End] Download session ended with permanent failure for URL: ${url}`);
+                        activeDownloads.delete(downloadId); // Remove from active set
+                        if (onCompleteCallback) onCompleteCallback();
                         reject(new Error(errorMessage));
                     }
                 };
@@ -182,6 +223,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 break;
                             case 'progress':
                                 const percent = Math.round(data.percent);
+                                logToServer('info', `[Progress] [${downloadId}] ${percent}% for ${url}`);
                                 progressBar.style.width = `${percent}%`;
                                 progressBar.textContent = `${percent}%`;
                                 statusText.textContent = `[${data.message || 'กำลังดาวน์โหลด...'}] ${fileName} - ${percent}%`;
@@ -192,7 +234,10 @@ document.addEventListener('DOMContentLoaded', () => {
                                 statusElement.innerHTML = `✅ ดาวน์โหลด '${data.title || fileName}' สำเร็จ!`;
                                 eventSource.close();
                                 // Refresh the video list to show the new video
+                                logToServer('info', `[Session End] Download session finished successfully for URL: ${url}`);
                                 setTimeout(() => location.reload(), 2000);
+                                activeDownloads.delete(downloadId); // Remove from active set
+                                if (onCompleteCallback) onCompleteCallback();
                                 resolve(url); // Success
                                 break;
                             case 'error':
