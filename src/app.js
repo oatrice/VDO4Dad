@@ -124,8 +124,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Function to download a video from a URL with retry mechanism
-    function downloadVideo(url, retryCount = 0) {
+    function downloadVideo(url) {
         return new Promise((resolve, reject) => {
+            const MAX_RETRIES = 5;
+            let retryCount = 0;
+
             const fileName = url.length > 50 ? url.substring(0, 50) + '...' : url;
             const statusElement = createStatusElement(fileName);
             const progressBar = statusElement.querySelector('.progress-bar');
@@ -134,154 +137,81 @@ document.addEventListener('DOMContentLoaded', () => {
             // Generate a unique download ID for this session
             const downloadId = `frontend-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             
-            // Add retry indicator if this is a retry
-            if (retryCount > 0) {
-                statusText.textContent = `[ลองใหม่ครั้งที่ ${retryCount}] ${fileName}`;
+            function attemptDownload() {
+                if (retryCount > 0) {
+                    statusText.textContent = `[ลองใหม่ครั้งที่ ${retryCount}/${MAX_RETRIES}] ${fileName}`;
+                }
+
+                const eventSource = new EventSource(`http://localhost:3000/download?url=${encodeURIComponent(url)}&downloadId=${downloadId}`);
+
+                const handleFailure = (errorMessage) => {
+                    eventSource.close();
+                    retryCount++;
+                    if (retryCount <= MAX_RETRIES) {
+                        logToServer('warn', `[EventSource] [${downloadId}] Download failed for ${url}. Retrying... (${retryCount}/${MAX_RETRIES})`, { error: errorMessage });
+                        const retryDelay = Math.pow(2, retryCount) * 1000; // Exponential backoff
+                        statusText.textContent = `[ล้มเหลว] ${fileName} - จะลองใหม่ใน ${retryDelay / 1000} วินาที...`;
+                        setTimeout(attemptDownload, retryDelay);
+                    } else {
+                        logToServer('error', `[EventSource] [${downloadId}] Download failed for ${url} after ${MAX_RETRIES} retries.`, { error: errorMessage });
+                        statusElement.className = 'download-status-item error';
+                        statusElement.innerHTML = `❌ ดาวน์โหลด '${fileName}' ล้มเหลว: ${errorMessage}`;
+                        reject(new Error(errorMessage));
+                    }
+                };
+
+                eventSource.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+
+                        switch (data.type) {
+                            case 'start':
+                                logToServer('log', `[EventSource] [${downloadId}] Start event for ${url}`, data.message);
+                                statusText.textContent = `[${data.message}] ${fileName}`;
+                                break;
+                            case 'progress':
+                                const percent = Math.round(data.percent);
+                                progressBar.style.width = `${percent}%`;
+                                progressBar.textContent = `${percent}%`;
+                                statusText.textContent = `[${data.message || 'กำลังดาวน์โหลด...'}] ${fileName} - ${percent}%`;
+                                break;
+                            case 'done':
+                                logToServer('log', `[EventSource] [${downloadId}] Done event for ${url}`, data);
+                                statusElement.className = 'download-status-item success';
+                                statusElement.innerHTML = `✅ ดาวน์โหลด '${data.title || fileName}' สำเร็จ!`;
+                                eventSource.close();
+                                // Refresh the video list to show the new video
+                                setTimeout(() => location.reload(), 2000);
+                                resolve(url); // Success
+                                break;
+                            case 'error':
+                                logToServer('error', `[EventSource] [${downloadId}] Error event for ${url}`, data.message);
+                                handleFailure(data.message);
+                                break;
+                            default:
+                                logToServer('warn', `[EventSource] [${downloadId}] Unknown event type for ${url}`, data.type);
+                                break;
+                        }
+                    } catch (parseError) {
+                        logToServer('error', `[EventSource] [${downloadId}] Failed to parse message for ${url}`, parseError.message);
+                        handleFailure('ข้อมูลที่ได้รับจากเซิร์ฟเวอร์ไม่ถูกต้อง');
+                    }
+                };
+
+                eventSource.onerror = (err) => {
+                    logToServer('error', `[EventSource] [${downloadId}] Connection error for ${url}`, err);
+                    handleFailure('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
+                };
+
+                eventSource.onopen = () => {
+                    logToServer('log', `[EventSource] [${downloadId}] Connection opened for: ${url}`);
+                };
             }
 
-            // เชื่อมต่อกับ Backend ผ่าน Server-Sent Events พร้อมส่ง download ID
-            const eventSource = new EventSource(`http://localhost:3000/download?url=${encodeURIComponent(url)}&downloadId=${downloadId}`);
-
-            eventSource.onmessage = (event) => {
-                logToServer('log', `[EventSource] [${downloadId}] Message received for ${url}`, event.data);
-                
-                try {
-                    const data = JSON.parse(event.data);
-
-                    switch (data.type) {
-                        case 'start':
-                            logToServer('log', `[EventSource] [${downloadId}] Start event for ${url}`, data.message);
-                            statusText.textContent = `[${data.message}] ${fileName}`;
-                            break;
-                    case 'progress':
-                        // Log progress only on significant changes to avoid flooding the console
-                        if (Math.round(data.percent) % 5 === 0) {
-                            logToServer('log', `[EventSource] [${downloadId}] Progress event for ${url}`, `${data.percent}%`);
-                        }
-                        const percent = Math.round(data.percent);
-                        progressBar.style.width = `${percent}%`;
-                        progressBar.textContent = `${percent}%`;
-                        statusText.textContent = `[${data.message || 'กำลังดาวน์โหลด...'}] ${fileName} - ${percent}%`;
-                        
-                        // Debug: Log every progress update to console
-                        console.log(`[DEBUG] [${downloadId}] Progress update for ${url}: ${percent}%`);
-                        break;
-                        case 'done':
-                            logToServer('log', `[EventSource] [${downloadId}] Done event for ${url}`, data);
-                            statusElement.className = 'download-status-item success';
-                            statusElement.innerHTML = `✅ ดาวน์โหลด '${data.title || fileName}' สำเร็จ!`;
-                            eventSource.close();
-                            logToServer('log', `[EventSource] [${downloadId}] Session ended for ${url}.`);
-                            // Refresh the video list to show the new video
-                            setTimeout(() => location.reload(), 2000);
-                            resolve(url); // Success
-                            break;
-                    case 'error':
-                        logToServer('error', `[EventSource] [${downloadId}] Error event for ${url}`, data.message);
-                        eventSource.close();
-                        logToServer('log', `[EventSource] [${downloadId}] Session ended with error for ${url}.`);
-                        
-                        // Retry logic for certain types of errors
-                        if (retryCount < 2 && (
-                            data.message.includes('ไม่สามารถเชื่อมต่อ') ||
-                            data.message.includes('timeout') ||
-                            data.message.includes('ไม่พบไฟล์')
-                        )) {
-                            logToServer('log', `[EventSource] [${downloadId}] Retrying download for ${url} (attempt ${retryCount + 1})`);
-                            statusText.textContent = `[ลองใหม่ครั้งที่ ${retryCount + 1}] ${fileName}`;
-                            
-                            // Wait 2 seconds before retry
-                            setTimeout(() => {
-                                downloadVideo(url, retryCount + 1)
-                                    .then(resolve)
-                                    .catch(reject);
-                            }, 2000);
-                        } else {
-                            statusElement.className = 'download-status-item error';
-                            statusElement.innerHTML = `❌ เกิดข้อผิดพลาดในการดาวน์โหลด '${fileName}': ${data.message}`;
-                            reject(new Error(data.message)); // Failure
-                        }
-                        break;
-                        default:
-                            logToServer('warn', `[EventSource] [${downloadId}] Unknown event type for ${url}`, data.type);
-                            break;
-                    }
-                } catch (parseError) {
-                    logToServer('error', `[EventSource] [${downloadId}] Failed to parse message for ${url}`, parseError.message);
-                    console.error(`[${downloadId}] Failed to parse EventSource message:`, event.data, parseError);
-                }
-            };
-
-            eventSource.onerror = (err) => {
-                logToServer('error', `[EventSource] [${downloadId}] Connection error for ${url}`, err);
-                eventSource.close();
-                logToServer('log', `[EventSource] [${downloadId}] Session ended with connection error for ${url}.`);
-                
-                // Retry logic for connection errors
-                if (retryCount < 2) {
-                    logToServer('log', `[EventSource] [${downloadId}] Retrying connection for ${url} (attempt ${retryCount + 1})`);
-                    statusText.textContent = `[ลองเชื่อมต่อใหม่ครั้งที่ ${retryCount + 1}] ${fileName}`;
-                    
-                    // Wait 3 seconds before retry
-                    setTimeout(() => {
-                        downloadVideo(url, retryCount + 1)
-                            .then(resolve)
-                            .catch(reject);
-                    }, 3000);
-                } else {
-                    statusElement.className = 'download-status-item error';
-                    statusElement.innerHTML = `❌ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ดาวน์โหลดได้`;
-                    reject(err); // Failure
-                }
-            };
-
-            // Add timeout for EventSource connection
-            const connectionTimeout = setTimeout(() => {
-                if (eventSource.readyState !== EventSource.CLOSED) {
-                    logToServer('error', `[EventSource] [${downloadId}] Connection timeout for ${url}`);
-                    eventSource.close();
-                    logToServer('log', `[EventSource] [${downloadId}] Session ended with timeout for ${url}.`);
-                    
-                    // Retry logic for timeout errors
-                    if (retryCount < 2) {
-                        logToServer('log', `[EventSource] [${downloadId}] Retrying after timeout for ${url} (attempt ${retryCount + 1})`);
-                        statusText.textContent = `[ลองใหม่หลัง timeout ครั้งที่ ${retryCount + 1}] ${fileName}`;
-                        
-                        // Wait 5 seconds before retry
-                        setTimeout(() => {
-                            downloadVideo(url, retryCount + 1)
-                                .then(resolve)
-                                .catch(reject);
-                        }, 5000);
-                    } else {
-                        statusElement.className = 'download-status-item error';
-                        statusElement.innerHTML = `❌ การเชื่อมต่อใช้เวลานานเกินไป`;
-                        reject(new Error('Connection timeout'));
-                    }
-                }
-            }, 120000); // เพิ่มเป็น 120 seconds timeout เพื่อรองรับ sleep period และการดาวโหลด
-
-            // Clear timeout when connection is established
-            eventSource.onopen = () => {
-                clearTimeout(connectionTimeout);
-                logToServer('log', `[EventSource] [${downloadId}] Connection opened for: ${url}`);
-                // Send a test message to verify connection
-                logToServer('log', `[EventSource] [${downloadId}] Ready state: ${eventSource.readyState}`);
-            };
-
-            // Add connection state monitoring
-            eventSource.addEventListener('open', () => {
-                logToServer('log', `[EventSource] [${downloadId}] Connection established for: ${url}`);
-            });
-
-            eventSource.addEventListener('error', (event) => {
-                logToServer('error', `[EventSource] [${downloadId}] Connection error for ${url}`, {
-                    readyState: eventSource.readyState,
-                    event: event
-                });
-            });
+            attemptDownload();
         });
     }
+
 
     // Function to create a status element for a download
     function createStatusElement(fileName) {
