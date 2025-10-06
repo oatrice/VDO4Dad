@@ -105,6 +105,7 @@ function updateVideosJson(videoInfo) {
 // Download endpoint with Server-Sent Events
 app.get('/download', async (req, res) => {
     const url = req.query.url;
+    const frontendDownloadId = req.query.downloadId;
     
     if (!url) {
         return res.status(400).json({ error: 'URL is required' });
@@ -119,8 +120,14 @@ app.get('/download', async (req, res) => {
         'Access-Control-Allow-Headers': 'Cache-Control'
     });
 
-    const downloadId = `download-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // Use frontend download ID if provided, otherwise generate new one
+    const downloadId = frontendDownloadId ? `backend-${frontendDownloadId}` : `download-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const videosDir = path.join(__dirname, 'src', 'videos');
+    
+    // Log correlation between frontend and backend IDs
+    if (frontendDownloadId) {
+        logInfo('Download ID correlation', { frontendId: frontendDownloadId, backendId: downloadId, url });
+    }
     
     // Ensure videos directory exists
     if (!fs.existsSync(videosDir)) {
@@ -240,12 +247,21 @@ app.get('/download', async (req, res) => {
     downloadProcess.on('progress', (progress) => {
         lastProgressTime = Date.now();
         lastProgressPercent = progress.percent;
-        logInfo('Download progress', { downloadId, percent: progress.percent });
-        res.write(`data: ${JSON.stringify({
+        logInfo('Download progress', { downloadId, percent: progress.percent, frontendId: frontendDownloadId });
+        
+        // Send progress to frontend
+        const progressData = {
             type: 'progress',
             percent: progress.percent,
             message: `กำลังดาวน์โหลด... ${progress.percent}%`
-        })}\n\n`);
+        };
+        
+        try {
+            res.write(`data: ${JSON.stringify(progressData)}\n\n`);
+            logInfo('Progress sent to frontend', { downloadId, percent: progress.percent });
+        } catch (error) {
+            logError('Failed to send progress to frontend', { downloadId, error: error.message });
+        }
     });
 
     // Handle process events
@@ -287,17 +303,29 @@ app.get('/download', async (req, res) => {
                 // Log all files for debugging
                 logInfo('Files in videos directory', { downloadId, files: files.slice(0, 10) }); // Log first 10 files
                 
+                // Get download start time for filtering recent files
+                const downloadStartTime = activeDownloads.has(downloadId) ? activeDownloads.get(downloadId).startTime : Date.now() - 60000;
+                
                 // Try multiple patterns to find the video file
                 let videoFile = files.find(file => 
                     file.startsWith(expectedFileNameStart) && (file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv'))
                 );
                 
-                // If not found, try to find any recent video file
+                // If not found, try to find any recent video file created after download started
                 if (!videoFile) {
-                    const recentFiles = files.filter(file => 
-                        (file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv')) &&
-                        !file.includes('thumbnail')
-                    );
+                    const recentFiles = files.filter(file => {
+                        if (!(file.endsWith('.mp4') || file.endsWith('.webm') || file.endsWith('.mkv')) || file.includes('thumbnail')) {
+                            return false;
+                        }
+                        
+                        try {
+                            const filePath = path.join(videosDir, file);
+                            const stats = fs.statSync(filePath);
+                            return stats.mtime.getTime() > downloadStartTime;
+                        } catch (error) {
+                            return false;
+                        }
+                    });
                     
                     if (recentFiles.length > 0) {
                         // Get the most recently modified file
@@ -307,7 +335,12 @@ app.get('/download', async (req, res) => {
                         }));
                         stats.sort((a, b) => b.mtime - a.mtime);
                         videoFile = stats[0].name;
-                        logInfo('Using most recent video file', { downloadId, fileName: videoFile });
+                        logInfo('Using most recent video file created after download', { 
+                            downloadId, 
+                            fileName: videoFile, 
+                            downloadStartTime: new Date(downloadStartTime).toISOString(),
+                            fileCreatedTime: stats[0].mtime.toISOString()
+                        });
                     }
                 }
                 

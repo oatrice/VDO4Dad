@@ -139,8 +139,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusText.textContent = `[ลองใหม่ครั้งที่ ${retryCount}] ${fileName}`;
             }
 
-            // เชื่อมต่อกับ Backend ผ่าน Server-Sent Events
-            const eventSource = new EventSource(`http://localhost:3000/download?url=${encodeURIComponent(url)}`);
+            // เชื่อมต่อกับ Backend ผ่าน Server-Sent Events พร้อมส่ง download ID
+            const eventSource = new EventSource(`http://localhost:3000/download?url=${encodeURIComponent(url)}&downloadId=${downloadId}`);
 
             eventSource.onmessage = (event) => {
                 logToServer('log', `[EventSource] [${downloadId}] Message received for ${url}`, event.data);
