@@ -164,8 +164,7 @@ app.get('/download', async (req, res) => {
 
     // Configure yt-dlp options
     const options = [
-        '--output',
-        outputPath,
+        '--output', outputPath,
         // Prioritize MP4 format, up to 720p. Fallback to best available.
         '--format', 'bestvideo[height<=720][ext=mp4][protocol!=m3u8]+bestaudio[ext=m4a][protocol!=m3u8]/best[height<=720][ext=mp4][protocol!=m3u8]/best[height<=720][protocol!=m3u8]',
         '--no-playlist', // Download only single video, not playlist
@@ -293,38 +292,50 @@ app.get('/download', async (req, res) => {
     res.write(`data: ${JSON.stringify({ 
         type: 'progress', 
         percent: 0,
-        message: 'กำลังเริ่มดาวโหลด...' 
-    })}\n\n`);
+        message: 'กำลังเริ่มดาวโหลด...'
+    })}
+
+`);
     
     // Use the 'progress' event for accurate progress reporting
     downloadProcess.on('progress', (progress) => {
         lastProgressTime = Date.now();
         lastProgressPercent = progress.percent;
         
-        const percent = progress.percent;
+        const rawPercent = progress.percent;
+        let finalPercent = 0;
         let message;
+
         if (downloadStage === 'video') {
-            message = `[1/3] กำลังดาวน์โหลดวิดีโอ... ${percent}%`;
+            // Scale video progress to be 0-80% of the total
+            finalPercent = Math.round(rawPercent * 0.8);
+            message = `[1/3] กำลังดาวน์โหลดวิดีโอ...`;
         } else if (downloadStage === 'audio') {
-            message = `[2/3] กำลังดาวน์โหลดเสียง... ${percent}%`;
+            // Scale audio progress to be 80-100% of the total
+            finalPercent = 80 + Math.round(rawPercent * 0.2);
+            message = `[2/3] กำลังดาวน์โหลดเสียง...`;
         } else if (downloadStage === 'merge') {
+            finalPercent = 100;
             message = `[3/3] กำลังรวมไฟล์...`;
         } else {
-            message = `กำลังดาวน์โหลด... ${percent}%`;
+            finalPercent = rawPercent;
+            message = `กำลังดาวน์โหลด...`;
         }
 
-        logInfo('Download progress', { downloadId, percent: progress.percent, message: message, frontendId: frontendDownloadId });
+        logInfo('Download progress', { downloadId, percent: finalPercent, message: message, frontendId: frontendDownloadId });
         
         // Send progress to frontend
         const progressData = {
             type: 'progress',
-            percent: progress.percent,
+            percent: finalPercent,
             message: message
         };
         
         try {
-            res.write(`data: ${JSON.stringify(progressData)}\n\n`);
-            logInfo('Progress sent to frontend', { downloadId, percent: progress.percent });
+            res.write(`data: ${JSON.stringify(progressData)}
+
+`);
+            logInfo('Progress sent to frontend', { downloadId, percent: finalPercent });
         } catch (error) {
             logError('Failed to send progress to frontend', { downloadId, error: error.message });
         }
@@ -340,7 +351,9 @@ app.get('/download', async (req, res) => {
         res.write(`data: ${JSON.stringify({ 
             type: 'error', 
             message: `เกิดข้อผิดพลาดในการดาวโหลด: ${error.message}` 
-        })}\n\n`);
+        })}
+
+`);
         res.end();
         activeDownloads.delete(downloadId);
         
@@ -465,7 +478,9 @@ app.get('/download', async (req, res) => {
                         message: 'ดาวโหลดสำเร็จ!',
                         filePath: relativePath,
                         title: videoInfo.title
-                    })}\n\n`);
+                    })}
+
+`);
                 } else {
                     logError('Downloaded file not found', { 
                         downloadId, 
@@ -475,14 +490,18 @@ app.get('/download', async (req, res) => {
                     res.write(`data: ${JSON.stringify({ 
                         type: 'error', 
                         message: 'ไม่พบไฟล์วิดีโอที่ดาวโหลด' 
-                    })}\n\n`);
+                    })}
+
+`);
                 }
             } catch (error) {
                 logError('Error processing completed download', { downloadId, error: error.message });
                 res.write(`data: ${JSON.stringify({ 
                     type: 'error', 
                     message: `เกิดข้อผิดพลาด: ${error.message}` 
-                })}\n\n`);
+                })}
+
+`);
             }
         } else if (code === null) {
             // Process terminated unexpectedly; treat as retryable failure
@@ -494,7 +513,9 @@ app.get('/download', async (req, res) => {
                 type: 'error', 
                 message: errorMessage,
                 retryable: true
-            })}\n\n`);
+            })}
+
+`);
         } else {
             // Download failed with non-zero exit code
             logError('Download failed with exit code', { downloadId, exitCode: code, frontendId: frontendDownloadId });
@@ -509,7 +530,9 @@ app.get('/download', async (req, res) => {
                 message: errorMessage,
                 exitCode: code,
                 retryable: frontendDownloadId ? true : false
-            })}\n\n`);
+            })}
+
+`);
         }
         
         res.end();

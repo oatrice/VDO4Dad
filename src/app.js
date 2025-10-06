@@ -89,8 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Split by comma or newline, then filter out empty strings
-        const urls = urlsText.split(/[
-,]+/).filter(url => url.trim() !== '');
+        const urls = urlsText.split(/[,]+/).filter(url => url.trim() !== '');
 
         if (urls.length === 0) {
             alert('ไม่พบ URL ที่ถูกต้อง');
@@ -226,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 const percent = Math.round(data.percent);
                                 logToServer('info', `[Progress] [${downloadId}] ${percent}% for ${url}`);
                                 progressBar.style.width = `${percent}%`;
-                                progressBar.textContent = data.message || `${percent}%`;
+                                progressBar.textContent = `${data.message} ${percent}%`;
                                 statusText.textContent = `${fileName}`;
                                 break;
                             case 'done':
