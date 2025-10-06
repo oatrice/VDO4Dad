@@ -51,8 +51,28 @@ if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
 }
 
-// Initialize yt-dlp
-const ytDlpWrap = new YTDlpWrap('/opt/homebrew/bin/yt-dlp');
+// Initialize yt-dlp with fallback paths
+const ytDlpPaths = [
+    '/opt/homebrew/bin/yt-dlp',
+    '/usr/local/bin/yt-dlp',
+    'yt-dlp' // fallback to PATH
+];
+
+let ytDlpWrap;
+for (const ytDlpPath of ytDlpPaths) {
+    try {
+        ytDlpWrap = new YTDlpWrap(ytDlpPath);
+        logInfo('yt-dlp initialized', { path: ytDlpPath });
+        break;
+    } catch (error) {
+        logWarn('Failed to initialize yt-dlp', { path: ytDlpPath, error: error.message });
+    }
+}
+
+if (!ytDlpWrap) {
+    logError('Failed to initialize yt-dlp with any path', { paths: ytDlpPaths });
+    process.exit(1);
+}
 
 // Store active downloads
 const activeDownloads = new Map();
@@ -159,10 +179,22 @@ app.get('/download', async (req, res) => {
 
     // Check if downloadProcess exists
     if (!downloadProcess) {
-        logError('Failed to create download process', { downloadId });
+        logError('Failed to create download process', { downloadId, url });
         res.write(`data: ${JSON.stringify({ 
             type: 'error', 
-            message: 'ไม่สามารถเริ่มการดาวโหลดได้' 
+            message: 'ไม่สามารถเริ่มการดาวโหลดได้ - yt-dlp process creation failed' 
+        })}\n\n`);
+        res.end();
+        activeDownloads.delete(downloadId);
+        return;
+    }
+
+    // Add process validation
+    if (!downloadProcess.ytDlpProcess) {
+        logError('yt-dlp process not available', { downloadId, url });
+        res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: 'ไม่สามารถเริ่มการดาวโหลดได้ - yt-dlp process not available' 
         })}\n\n`);
         res.end();
         activeDownloads.delete(downloadId);
@@ -202,22 +234,33 @@ app.get('/download', async (req, res) => {
 
     // Handle process events
     downloadProcess.on('error', (error) => {
-        logError('Download process error', { downloadId, error: error.message });
+        logError('Download process error', { downloadId, error: error.message, stack: error.stack });
         clearTimeout(downloadTimeout);
         res.write(`data: ${JSON.stringify({ 
             type: 'error', 
-            message: `เกิดข้อผิดพลาด: ${error.message}` 
+            message: `เกิดข้อผิดพลาดในการดาวโหลด: ${error.message}` 
         })}\n\n`);
         res.end();
         activeDownloads.delete(downloadId);
     });
 
+    // Handle stderr output for better error reporting
+    if (downloadProcess.ytDlpProcess && downloadProcess.ytDlpProcess.stderr) {
+        downloadProcess.ytDlpProcess.stderr.on('data', (data) => {
+            const errorOutput = data.toString();
+            if (errorOutput.trim()) {
+                logWarn('yt-dlp stderr output', { downloadId, stderr: errorOutput.trim() });
+            }
+        });
+    }
+
     downloadProcess.on('close', (code) => {
         logInfo('Download process exited', { downloadId, exitCode: code });
         clearTimeout(downloadTimeout);
         
-        if (code === 0) {
-            // Download successful
+        // Handle different exit codes
+        if (code === 0 || code === null) {
+            // Download successful (0) or process terminated normally (null)
             try {
                 // Find the downloaded file
                 const expectedFileNameStart = sanitizedTitle;
@@ -254,6 +297,7 @@ app.get('/download', async (req, res) => {
                 })}\n\n`);
             }
         } else {
+            // Download failed with non-zero exit code
             logError('Download failed with exit code', { downloadId, exitCode: code });
             res.write(`data: ${JSON.stringify({ 
                 type: 'error', 

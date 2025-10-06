@@ -134,44 +134,50 @@ document.addEventListener('DOMContentLoaded', () => {
             // เชื่อมต่อกับ Backend ผ่าน Server-Sent Events
             const eventSource = new EventSource(`http://localhost:3000/download?url=${encodeURIComponent(url)}`);
 
-            eventSource.onopen = () => {
-                logToServer('log', `[EventSource] Connection opened for: ${url}`);
-            };
-
             eventSource.onmessage = (event) => {
                 logToServer('log', `[EventSource] Message received for ${url}`, event.data);
-                const data = JSON.parse(event.data);
+                
+                try {
+                    const data = JSON.parse(event.data);
 
-                switch (data.type) {
-                    case 'start':
-                        logToServer('log', `[EventSource] Start event for ${url}`, data.message);
-                        statusText.textContent = `[${data.message}] ${fileName}`;
-                        break;
-                    case 'progress':
-                        // Log progress only on significant changes to avoid flooding the console
-                        if (Math.round(data.percent) % 5 === 0) {
-                            logToServer('log', `[EventSource] Progress event for ${url}`, `${data.percent}%`);
-                        }
-                        const percent = Math.round(data.percent);
-                        progressBar.style.width = `${percent}%`;
-                        progressBar.textContent = `${percent}%`;
-                        break;
-                    case 'done':
-                        logToServer('log', `[EventSource] Done event for ${url}`, data);
-                        statusElement.className = 'download-status-item success';
-                        statusElement.innerHTML = `✅ ดาวน์โหลด '${data.title || fileName}' สำเร็จ!`;
-                        eventSource.close();
-                        // Refresh the video list to show the new video
-                        setTimeout(() => location.reload(), 2000);
-                        resolve(url); // Success
-                        break;
-                    case 'error':
-                        logToServer('error', `[EventSource] Error event for ${url}`, data.message);
-                        statusElement.className = 'download-status-item error';
-                        statusElement.innerHTML = `❌ เกิดข้อผิดพลาดในการดาวน์โหลด '${fileName}': ${data.message}`;
-                        eventSource.close();
-                        reject(new Error(data.message)); // Failure
-                        break;
+                    switch (data.type) {
+                        case 'start':
+                            logToServer('log', `[EventSource] Start event for ${url}`, data.message);
+                            statusText.textContent = `[${data.message}] ${fileName}`;
+                            break;
+                        case 'progress':
+                            // Log progress only on significant changes to avoid flooding the console
+                            if (Math.round(data.percent) % 5 === 0) {
+                                logToServer('log', `[EventSource] Progress event for ${url}`, `${data.percent}%`);
+                            }
+                            const percent = Math.round(data.percent);
+                            progressBar.style.width = `${percent}%`;
+                            progressBar.textContent = `${percent}%`;
+                            statusText.textContent = `[${data.message || 'กำลังดาวน์โหลด...'}] ${fileName} - ${percent}%`;
+                            break;
+                        case 'done':
+                            logToServer('log', `[EventSource] Done event for ${url}`, data);
+                            statusElement.className = 'download-status-item success';
+                            statusElement.innerHTML = `✅ ดาวน์โหลด '${data.title || fileName}' สำเร็จ!`;
+                            eventSource.close();
+                            // Refresh the video list to show the new video
+                            setTimeout(() => location.reload(), 2000);
+                            resolve(url); // Success
+                            break;
+                        case 'error':
+                            logToServer('error', `[EventSource] Error event for ${url}`, data.message);
+                            statusElement.className = 'download-status-item error';
+                            statusElement.innerHTML = `❌ เกิดข้อผิดพลาดในการดาวน์โหลด '${fileName}': ${data.message}`;
+                            eventSource.close();
+                            reject(new Error(data.message)); // Failure
+                            break;
+                        default:
+                            logToServer('warn', `[EventSource] Unknown event type for ${url}`, data.type);
+                            break;
+                    }
+                } catch (parseError) {
+                    logToServer('error', `[EventSource] Failed to parse message for ${url}`, parseError.message);
+                    console.error('Failed to parse EventSource message:', event.data, parseError);
                 }
             };
 
@@ -181,6 +187,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 statusElement.innerHTML = `❌ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ดาวน์โหลดได้`;
                 eventSource.close();
                 reject(err); // Failure
+            };
+
+            // Add timeout for EventSource connection
+            const connectionTimeout = setTimeout(() => {
+                if (eventSource.readyState !== EventSource.CLOSED) {
+                    logToServer('error', `[EventSource] Connection timeout for ${url}`);
+                    statusElement.className = 'download-status-item error';
+                    statusElement.innerHTML = `❌ การเชื่อมต่อใช้เวลานานเกินไป`;
+                    eventSource.close();
+                    reject(new Error('Connection timeout'));
+                }
+            }, 30000); // 30 seconds timeout
+
+            // Clear timeout when connection is established
+            eventSource.onopen = () => {
+                clearTimeout(connectionTimeout);
+                logToServer('log', `[EventSource] Connection opened for: ${url}`);
             };
         });
     }
