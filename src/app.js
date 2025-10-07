@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
 
             case 'progress':
-                updateQueueItemProgress(item.id, item.progress, item.message);
+                updateQueueItemProgress(item.id, item.progress);
                 break;
 
             case 'item_completed':
@@ -498,7 +498,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             
                         case 'progress':
                             // Update progress bar in real-time (no reload)
-                            updateQueueItemProgress(queueId, data.percent, data.message);
+                            updateQueueItemProgress(queueId, data.percent);
                             break;
                             
                         case 'done':
@@ -548,7 +548,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const progressBar = progressContainer.querySelector('.queue-progress-bar');
         if (progressBar) {
             progressBar.style.width = `${percent}%`;
-            progressBar.textContent = message || `${percent}%`;
+            progressBar.textContent = `${percent}%`;
         }
 
         // Update status text to show percent for downloading items
@@ -559,10 +559,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (queueItemData && queueItemData.status === 'DOWNLOADING') {
                 const percentSpan = statusBadge.querySelector('span:last-child');
                 if (percentSpan && !percentSpan.classList.contains('status-badge')) {
-                    percentSpan.textContent = message || `${percent}%`;
+                    percentSpan.textContent = `${percent}%`;
                 } else if (!percentSpan) {
                     const newSpan = document.createElement('span');
-                    newSpan.textContent = message || `${percent}%`;
+                    newSpan.textContent = `${percent}%`;
                     statusBadge.appendChild(newSpan);
                 }
             }

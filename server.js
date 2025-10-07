@@ -282,15 +282,14 @@ async function startQueueItemDownload(queueItem) {
             queueItem.progress = finalPercent;
             saveQueueData();
 
-            // Broadcast progress update with message
+            // Broadcast progress update
             broadcastQueueUpdate({
                 type: 'queue_updated',
                 action: 'progress',
                 item: {
                     id: queueItem.id,
                     progress: finalPercent,
-                    status: queueItem.status,
-                    message: message
+                    status: queueItem.status
                 }
             });
 
