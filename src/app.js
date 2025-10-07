@@ -280,60 +280,49 @@ document.addEventListener('DOMContentLoaded', () => {
         addToQueueBtn.classList.add('loading');
         showLoadingState(`กำลังเพิ่ม ${urls.length} รายการเข้าคิว...`);
 
-        let successCount = 0;
+        // Use batch API for all cases (supports single or multiple URLs)
+        logToServer('info', `[Add to Queue] Sending batch request with ${urls.length} URL(s)`, { urls });
+        
         let failedUrls = [];
-        let queuedItems = []; // Store successfully queued items
-
-        // Add each URL to queue first
-        logToServer('info', `[Add to Queue] Starting to process ${urls.length} URLs`, { urls });
+        let queuedItems = [];
+        let successCount = 0;
         
-        for (let i = 0; i < urls.length; i++) {
-            const url = urls[i];
-            logToServer('info', `[Add to Queue] Processing URL ${i + 1}/${urls.length}`, { url, index: i });
+        try {
+            const response = await fetch('http://localhost:3000/api/queue/batch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ urls })
+            });
+
+            const batchData = await response.json();
             
-            try {
-                const response = await fetch('http://localhost:3000/api/queue', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ url })
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    successCount++;
-                    queuedItems.push(data.item);
-                    logToServer('info', `[Add to Queue] Successfully added URL ${i + 1}/${urls.length}`, { 
-                        url, 
-                        id: data.item.id,
-                        successCount 
-                    });
-                } else {
-                    failedUrls.push({ url, error: data.error });
-                    logToServer('error', `[Add to Queue] Failed to add URL ${i + 1}/${urls.length}`, { 
-                        url, 
-                        error: data.error,
-                        statusCode: response.status
-                    });
-                }
-            } catch (error) {
-                failedUrls.push({ url, error: error.message });
-                logToServer('error', `[Add to Queue] Exception while adding URL ${i + 1}/${urls.length}`, { 
-                    url, 
-                    error: error.message,
-                    stack: error.stack
-                });
+            if (!batchData.success) {
+                throw new Error(batchData.error || 'Batch request failed');
             }
+            
+            logToServer('info', `[Add to Queue] Batch request completed`, { 
+                total: batchData.summary.total,
+                success: batchData.summary.success,
+                failed: batchData.summary.failed
+            });
+            
+            // Process batch results
+            failedUrls = batchData.results.filter(r => !r.success);
+            queuedItems = batchData.results.filter(r => r.success).map(r => r.item);
+            successCount = batchData.summary.success;
+            
+        } catch (error) {
+            logToServer('error', `[Add to Queue] Batch request error`, { 
+                error: error.message,
+                stack: error.stack
+            });
+            alert('❌ เกิดข้อผิดพลาด: ' + error.message);
+            addToQueueBtn.disabled = false;
+            addToQueueBtn.classList.remove('loading');
+            return;
         }
-        
-        logToServer('info', `[Add to Queue] Finished processing all URLs`, { 
-            total: urls.length,
-            success: successCount,
-            failed: failedUrls.length,
-            failedUrls: failedUrls.map(f => f.url)
-        });
 
         // Hide loading and reload queue
         hideLoadingState();

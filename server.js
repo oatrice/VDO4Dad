@@ -825,7 +825,131 @@ app.delete('/api/queue', (req, res) => {
     }
 });
 
-// Add item to queue endpoint
+// Add multiple items to queue (batch)
+app.post('/api/queue/batch', async (req, res) => {
+    try {
+        const { urls } = req.body;
+        
+        // Log incoming request
+        logInfo('[Add Batch to Queue API] Received batch request', { urlCount: urls?.length });
+        
+        if (!urls || !Array.isArray(urls) || urls.length === 0) {
+            logWarn('[Add Batch to Queue API] Missing or invalid URLs array');
+            return res.status(400).json({ 
+                success: false, 
+                error: 'URLs array is required' 
+            });
+        }
+        
+        logInfo('[Add Batch to Queue API] Processing batch', { urls, count: urls.length });
+        
+        const results = [];
+        let successCount = 0;
+        let failedCount = 0;
+        
+        for (let i = 0; i < urls.length; i++) {
+            const url = urls[i];
+            logInfo(`[Add Batch to Queue API] Processing URL ${i + 1}/${urls.length}`, { url });
+            
+            try {
+                // Check if URL already exists
+                const existingItem = queueData.find(item => item.url === url);
+                if (existingItem) {
+                    logWarn(`[Add Batch to Queue API] URL ${i + 1}/${urls.length} already exists`, { url, existingId: existingItem.id });
+                    results.push({
+                        url,
+                        success: false,
+                        error: 'URL already exists in queue',
+                        existingItem
+                    });
+                    failedCount++;
+                    continue;
+                }
+                
+                // Fetch video metadata
+                logInfo(`[Add Batch to Queue API] Fetching metadata for URL ${i + 1}/${urls.length}`, { url });
+                const videoInfo = await ytDlpWrap.getVideoInfo(url);
+                logInfo(`[Add Batch to Queue API] Successfully fetched metadata for URL ${i + 1}/${urls.length}`, { 
+                    title: videoInfo.title, 
+                    url,
+                    duration: videoInfo.duration
+                });
+                
+                // Create queue item
+                const queueItem = {
+                    id: `queue-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    url: url,
+                    title: videoInfo.title || 'Unknown Title',
+                    thumbnail: videoInfo.thumbnail || videoInfo.thumbnails?.[videoInfo.thumbnails.length - 1]?.url || null,
+                    status: QueueStatus.PENDING,
+                    progress: 0,
+                    pid: null,
+                    filePath: null,
+                    error: null,
+                    addedAt: new Date().toISOString(),
+                    startedAt: null,
+                    completedAt: null
+                };
+                
+                // Add to queue
+                queueData.push(queueItem);
+                successCount++;
+                
+                results.push({
+                    url,
+                    success: true,
+                    item: queueItem
+                });
+                
+                logInfo(`[Add Batch to Queue API] Successfully added URL ${i + 1}/${urls.length}`, { 
+                    id: queueItem.id, 
+                    title: queueItem.title 
+                });
+                
+            } catch (error) {
+                logError(`[Add Batch to Queue API] Failed to process URL ${i + 1}/${urls.length}`, { 
+                    url, 
+                    error: error.message 
+                });
+                results.push({
+                    url,
+                    success: false,
+                    error: error.message
+                });
+                failedCount++;
+            }
+        }
+        
+        // Save to file once after all items processed
+        saveQueueData();
+        
+        logInfo('[Add Batch to Queue API] Batch processing completed', { 
+            total: urls.length,
+            success: successCount,
+            failed: failedCount,
+            queueSize: queueData.length
+        });
+        
+        res.json({ 
+            success: true,
+            message: `เพิ่มเข้าคิวสำเร็จ ${successCount}/${urls.length} รายการ`,
+            results,
+            summary: {
+                total: urls.length,
+                success: successCount,
+                failed: failedCount
+            }
+        });
+    } catch (error) {
+        logError('[Add Batch to Queue API] Batch processing error', { error: error.message });
+        res.status(500).json({ 
+            success: false, 
+            error: 'เกิดข้อผิดพลาดในการเพิ่มเข้าคิว' 
+        });
+    }
+});
+
+// Add single item to queue endpoint
 app.post('/api/queue', async (req, res) => {
     try {
         const { url } = req.body;
