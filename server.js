@@ -896,19 +896,47 @@ app.get('/api/queue/:id/download-stream', async (req, res) => {
         
         logInfo('[Queue Download Stream] Download process started', { queueId: id, pid: queueItem.pid });
         
+        // Track download stages for progress calculation
+        let lastRawPercent = 0;
+        let downloadStage = 'video'; // video, audio
+        let stageOffset = 0; // 0 for video, 50 for audio
+        
         // Handle progress
         downloadProcess.on('progress', (progress) => {
-            const percent = Math.round(progress.percent);
-            queueItem.progress = percent;
+            const rawPercent = progress.percent || 0;
+            
+            // Detect stage change: if progress goes backwards, we're in a new stage
+            if (rawPercent < lastRawPercent && lastRawPercent > 90) {
+                // Progress went backwards after reaching high value = new stage (audio)
+                downloadStage = 'audio';
+                stageOffset = 50;
+                logInfo('[Queue Download Stream] Stage changed to audio', { queueId: id });
+            }
+            lastRawPercent = rawPercent;
+            
+            // Calculate final percent: each stage is 50% of total
+            const finalPercent = Math.min(100, Math.round(stageOffset + (rawPercent / 2)));
+            
+            const message = downloadStage === 'video' 
+                ? '[1/2] กำลังดาวน์โหลดวิดีโอ' 
+                : '[2/2] กำลังดาวน์โหลดเสียง';
+            
+            queueItem.progress = finalPercent;
             saveQueueData();
             
             res.write(`data: ${JSON.stringify({ 
                 type: 'progress', 
-                percent: percent,
-                message: 'กำลังดาวน์โหลด'
+                percent: finalPercent,
+                message: message
             })}\n\n`);
             
-            logInfo('[Queue Download Stream] Progress', { queueId: id, percent });
+            logInfo('[Queue Download Stream] Progress', { 
+                queueId: id, 
+                rawPercent, 
+                finalPercent, 
+                stage: downloadStage,
+                stageOffset
+            });
         });
         
         // Handle completion
