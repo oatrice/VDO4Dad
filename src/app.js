@@ -48,13 +48,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initial load
     loadVideos();
-    
-    // Poll for new videos every 5 seconds (when queue is active)
-    setInterval(() => {
-        if (queueData.some(item => item.status === 'DOWNLOADING')) {
-            loadVideos();
-        }
-    }, 5000);
 
     // Function to render the list of videos
     function renderVideoList() {
@@ -338,9 +331,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Hide loading and reload queue
+        // Hide loading (no reload needed - items already in queuedItems)
         hideLoadingState();
-        await loadQueue();
 
         // Show results
         if (failedUrls.length === 0) {
@@ -349,6 +341,10 @@ document.addEventListener('DOMContentLoaded', () => {
             // Keep failed URLs in textarea
             queueUrlInput.value = failedUrls.map(f => f.url).join('\n');
         }
+
+        // Render queue items directly (no reload)
+        queueData = [...queueData, ...queuedItems];
+        renderQueue();
 
         // Re-enable button
         addToQueueBtn.disabled = false;
@@ -394,19 +390,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     switch (data.type) {
                         case 'start':
                             logToServer('info', `[Start Download] Download started`, { queueId });
-                            loadQueue(); // Reload to show DOWNLOADING status
+                            updateQueueItemStatus(queueId, 'DOWNLOADING');
                             break;
                             
                         case 'progress':
-                            logToServer('info', `[Start Download] Progress ${data.percent}%`, { queueId, percent: data.percent });
-                            // Update queue item progress in UI
+                            // Update progress bar in real-time (no reload)
                             updateQueueItemProgress(queueId, data.percent);
                             break;
                             
                         case 'done':
                             logToServer('info', `[Start Download] Download completed`, { queueId, title: data.title });
                             eventSource.close();
-                            loadQueue(); // Reload to show COMPLETED status
+                            updateQueueItemStatus(queueId, 'COMPLETED');
                             loadVideos(); // Reload video list to show new video
                             resolve();
                             break;
@@ -414,7 +409,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         case 'error':
                             logToServer('error', `[Start Download] Download error`, { queueId, error: data.message });
                             eventSource.close();
-                            loadQueue(); // Reload to show FAILED status
+                            updateQueueItemStatus(queueId, 'FAILED', data.message);
                             reject(new Error(data.message));
                             break;
                     }
@@ -431,15 +426,73 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
     
-    // Update queue item progress in UI
+    // Update queue item progress in UI (real-time, no reload)
     function updateQueueItemProgress(queueId, percent) {
         const queueItem = document.querySelector(`[data-id="${queueId}"]`);
-        if (queueItem) {
-            const progressBar = queueItem.querySelector('.queue-progress-bar');
-            if (progressBar) {
-                progressBar.style.width = `${percent}%`;
-                progressBar.textContent = `${percent}%`;
+        if (!queueItem) return;
+        
+        // Update or create progress bar
+        let progressContainer = queueItem.querySelector('.queue-item-progress');
+        if (!progressContainer) {
+            // Create progress bar if it doesn't exist
+            const infoDiv = queueItem.querySelector('.queue-item-info');
+            progressContainer = document.createElement('div');
+            progressContainer.className = 'queue-item-progress';
+            progressContainer.innerHTML = '<div class="queue-progress-bar" style="width: 0%">0%</div>';
+            infoDiv.appendChild(progressContainer);
+        }
+        
+        const progressBar = progressContainer.querySelector('.queue-progress-bar');
+        if (progressBar) {
+            progressBar.style.width = `${percent}%`;
+            progressBar.textContent = `${percent}%`;
+        }
+        
+        // Update status text to show percent
+        const statusBadge = queueItem.querySelector('.queue-item-status');
+        if (statusBadge) {
+            const percentSpan = statusBadge.querySelector('span:last-child');
+            if (percentSpan && !percentSpan.classList.contains('status-badge')) {
+                percentSpan.textContent = `${percent}%`;
+            } else if (!percentSpan) {
+                const newSpan = document.createElement('span');
+                newSpan.textContent = `${percent}%`;
+                statusBadge.appendChild(newSpan);
             }
+        }
+    }
+    
+    // Update queue item status in UI (real-time, no reload)
+    function updateQueueItemStatus(queueId, status, errorMessage = null) {
+        const queueItem = document.querySelector(`[data-id="${queueId}"]`);
+        if (!queueItem) return;
+        
+        const statusBadge = queueItem.querySelector('.status-badge');
+        if (statusBadge) {
+            // Update status class
+            statusBadge.className = `status-badge status-${status.toLowerCase()}`;
+            statusBadge.textContent = getStatusText(status);
+        }
+        
+        // Show/hide progress bar based on status
+        const progressContainer = queueItem.querySelector('.queue-item-progress');
+        if (status === 'COMPLETED' || status === 'FAILED') {
+            if (progressContainer) {
+                progressContainer.style.display = 'none';
+            }
+        }
+        
+        // Show error message if failed
+        if (status === 'FAILED' && errorMessage) {
+            const infoDiv = queueItem.querySelector('.queue-item-info');
+            let errorDiv = infoDiv.querySelector('.error-message');
+            if (!errorDiv) {
+                errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                errorDiv.style.cssText = 'color: #721c24; font-size: 0.85rem; margin-top: 4px;';
+                infoDiv.appendChild(errorDiv);
+            }
+            errorDiv.textContent = `❌ ${errorMessage}`;
         }
     }
 
