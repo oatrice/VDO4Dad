@@ -184,6 +184,14 @@ app.get('/download', async (req, res) => {
     // Start download
     logInfo(`Starting download`, { downloadId, url, options });
     
+    // Reserve the download slot BEFORE starting the process to handle early cancellation
+    activeDownloads.set(downloadId, {
+        process: null, // Will be set after exec
+        url: url,
+        startTime: Date.now(),
+        cancelled: false // Flag for early cancellation
+    });
+    
     // Log yt-dlp version and configuration
     try {
         const ytDlpVersion = await ytDlpWrap.getVersion();
@@ -192,17 +200,43 @@ app.get('/download', async (req, res) => {
         logWarn('Failed to get yt-dlp version', { downloadId, error: error.message });
     }
     
+    // Check if cancelled before starting
+    const downloadInfo = activeDownloads.get(downloadId);
+    if (downloadInfo && downloadInfo.cancelled) {
+        logInfo('Download was cancelled before process started', { downloadId });
+        res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: 'การดาวโหลดถูกยกเลิก' 
+        })}\n\n`);
+        res.end();
+        activeDownloads.delete(downloadId);
+        return;
+    }
+    
     const downloadProcess = ytDlpWrap.exec([
         url,
         ...options
     ]);
 
-    // Store download info
-    activeDownloads.set(downloadId, {
-        process: downloadProcess, // This is the EventEmitter
-        url: url,
-        startTime: Date.now()
-    });
+    // Update with actual process and cleanup function
+    if (activeDownloads.has(downloadId)) {
+        const downloadInfo = activeDownloads.get(downloadId);
+        downloadInfo.process = downloadProcess;
+        downloadInfo.cleanup = cleanup; // Store cleanup function for cancellation
+    } else {
+        // Was deleted (cancelled) while exec was starting
+        logWarn('Download was cancelled during process creation', { downloadId });
+        if (downloadProcess && downloadProcess.ytDlpProcess) {
+            downloadProcess.ytDlpProcess.kill();
+        }
+        cleanup();
+        res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: 'การดาวโหลดถูกยกเลิก' 
+        })}\n\n`);
+        res.end();
+        return;
+    }
 
     // Check if downloadProcess exists
     if (!downloadProcess) {
@@ -234,12 +268,21 @@ app.get('/download', async (req, res) => {
         return;
     }
 
+    // Store cleanup function for cancellation
+    const cleanup = () => {
+        clearTimeout(downloadTimeout);
+        clearTimeout(progressTimeout);
+        clearInterval(processHealthInterval);
+        clearInterval(heartbeatInterval);
+    };
+
     // Add timeout to prevent hanging
     const downloadTimeout = setTimeout(() => {
         logError('Download timeout after 5 minutes', { downloadId });
         if (downloadProcess && downloadProcess.ytDlpProcess) {
             downloadProcess.ytDlpProcess.kill('SIGTERM');
         }
+        cleanup();
         res.write(`data: ${JSON.stringify({ 
             type: 'error', 
             message: 'การดาวโหลดใช้เวลานานเกินไป (5 นาที)' 
@@ -344,10 +387,7 @@ app.get('/download', async (req, res) => {
     // Handle process events
     downloadProcess.on('error', (error) => {
         logError('Download process error', { downloadId, error: error.message, stack: error.stack });
-        clearTimeout(downloadTimeout);
-        clearTimeout(progressTimeout);
-        clearInterval(processHealthInterval);
-        clearInterval(heartbeatInterval); // Stop heartbeat on error
+        cleanup();
         res.write(`data: ${JSON.stringify({ 
             type: 'error', 
             message: `เกิดข้อผิดพลาดในการดาวโหลด: ${error.message}` 
@@ -393,10 +433,7 @@ app.get('/download', async (req, res) => {
 
     downloadProcess.on('close', (code) => {
         logInfo('Download process exited', { downloadId, exitCode: code, frontendId: frontendDownloadId });
-        clearTimeout(downloadTimeout);
-        clearTimeout(progressTimeout);
-        clearInterval(processHealthInterval);
-        clearInterval(heartbeatInterval); // Stop heartbeat on close
+        cleanup();
         
         // Handle different exit codes
         if (code === 0) {
@@ -544,8 +581,8 @@ app.get('/download', async (req, res) => {
 
     // Handle client disconnect
     req.on('close', () => {
-        clearInterval(heartbeatInterval); // Stop heartbeat on client disconnect
         // Do not kill the download on SSE disconnect; allow it to continue in the background
+        // Note: cleanup() is NOT called here to let download continue
         logWarn('SSE client disconnected; keeping download running', { downloadId, url });
     });
 });
@@ -578,11 +615,25 @@ app.post('/downloads/:id/cancel', (req, res) => {
         const download = activeDownloads.get(downloadId);
         logInfo('Cancelling download', { downloadId, url: download.url });
         
+        // Set cancelled flag for early cancellation handling
+        download.cancelled = true;
+        
+        // Clean up timers and intervals
+        if (download.cleanup) {
+            download.cleanup();
+            logInfo('Cleanup timers/intervals', { downloadId });
+        }
+        
+        // Kill the process
         if (download.process && download.process.ytDlpProcess) {
-            download.process.ytDlpProcess.kill();
-            logInfo('Process killed', { downloadId });
+            try {
+                download.process.ytDlpProcess.kill('SIGKILL'); // Use SIGKILL for immediate termination
+                logInfo('Process killed with SIGKILL', { downloadId, pid: download.process.ytDlpProcess.pid });
+            } catch (error) {
+                logError('Failed to kill process', { downloadId, error: error.message });
+            }
         } else {
-            logWarn('No process to kill', { downloadId });
+            logWarn('No process to kill yet (early cancellation)', { downloadId });
         }
         
         activeDownloads.delete(downloadId);
