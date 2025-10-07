@@ -177,7 +177,8 @@ h1 {
 .video-list-container {
     flex: 1; /* Takes up less space */
     min-width: 280px;
-    max-height: calc(60vh + 80px); /* Match player height + title/controls approx. */
+    height: 80vh; /* Fixed height for better visibility */
+    max-height: 80vh;
     overflow-y: auto;
     background-color: #fff;
     border-radius: 8px;
