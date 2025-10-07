@@ -5,13 +5,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const videoListContainer = document.getElementById('video-list');
     const prevBtn = document.getElementById('prev-btn');
     const nextBtn = document.getElementById('next-btn');
-    const urlInput = document.getElementById('url-input');
-    const downloadBtn = document.getElementById('download-btn');
-    const downloadStatusContainer = document.getElementById('download-status-container');
+
+    // Queue Manager elements
+    const queueUrlInput = document.getElementById('queue-url-input');
+    const addToQueueBtn = document.getElementById('add-to-queue-btn');
+    const queueList = document.getElementById('queue-list');
 
     let videos = [];
     let currentVideoIndex = 0;
     let activeDownloads = new Set(); // For tracking incomplete downloads
+    let queueData = []; // Store queue data
 
     // Add unload listener to log incomplete downloads
     window.addEventListener('beforeunload', () => {
@@ -80,66 +83,6 @@ document.addEventListener('DOMContentLoaded', () => {
         playVideo(newIndex);
     });
 
-    // Event listener for the download button
-    downloadBtn.addEventListener('click', async () => {
-        let urlsText = urlInput.value.trim();
-        if (!urlsText) {
-            alert('กรุณาใส่ URL ของวิดีโอ');
-            return;
-        }
-
-        // Split by comma or newline, then filter out empty strings
-        const urls = urlsText.split(/[,]+/).filter(url => url.trim() !== '');
-
-        if (urls.length === 0) {
-            alert('ไม่พบ URL ที่ถูกต้อง');
-            return;
-        }
-
-        // Disable button to prevent multiple clicks
-        downloadBtn.disabled = true;
-        downloadBtn.textContent = 'กำลังดาวน์โหลด...';
-
-        let completedCount = 0;
-        const totalDownloads = urls.length;
-        const batchId = `batch-${Date.now()}`;
-        logToServer('info', `[Batch Start] ID: ${batchId}. Starting downloads for ${totalDownloads} URLs.`);
-
-        const onDownloadComplete = () => {
-            completedCount++;
-            logToServer('info', `[Batch Progress] ID: ${batchId}. ${completedCount} of ${totalDownloads} downloads processed.`);
-        };
-
-        const downloadPromises = urls.map(url => downloadVideo(url.trim(), onDownloadComplete));
-
-        try {
-            const results = await Promise.allSettled(downloadPromises);
-
-            logToServer('info', `[Batch End] ID: ${batchId}. All downloads processed.`);
-
-            const failedUrls = results
-                .map((result, index) => { // This part runs only after ALL downloads are settled.
-                    if (result.status === 'rejected') {
-                        // The 'end session' log for each download is now handled inside downloadVideo's promise.
-                        // This log remains as a final summary.
-                        logToServer('error', `[Batch Summary] ID: ${batchId}. Download failed for URL: ${urls[index]}`, { reason: result.reason.message });
-                        return urls[index]; // Return the original URL that failed
-                    } else {
-                        logToServer('info', `[Batch Summary] ID: ${batchId}. Download finished for URL: ${urls[index]}`);
-                        return null;
-                    }
-                })
-                .filter(url => url !== null);
-
-            // Update textarea with failed URLs
-            urlInput.value = failedUrls.join('\n');
-        } finally {
-            // Re-enable button
-            downloadBtn.disabled = false;
-            downloadBtn.textContent = 'ดาวน์โหลดวิดีโอ';
-        }
-    });
-
     // Function to send logs to the server
     function logToServer(level, message, data = null, useBeacon = false) {
         const consoleMethod = console[level] || console.log;
@@ -169,147 +112,178 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Function to download a video from a URL with retry mechanism
-    function downloadVideo(url, onCompleteCallback) {
-        return new Promise((resolve, reject) => {
-            const MAX_RETRIES = 5;
-            let retryCount = 0;
-            let timeoutId;
+    // ========== Queue Manager Functions ==========
 
-            const fileName = url.length > 50 ? url.substring(0, 50) + '...' : url;
-            const statusElement = createStatusElement(fileName);
-            const progressBar = statusElement.querySelector('.progress-bar');
-            const statusText = statusElement.querySelector('span');
-            const cancelBtn = statusElement.querySelector('.cancel-btn');
-
-            // Generate a unique download ID for this session
-            const downloadId = `frontend-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            activeDownloads.add(downloadId); // Add to active set
-
-            logToServer('info', `[Session Start] Download session started for URL: ${url}`, { downloadId });
-
-            let eventSource;
-
-            cancelBtn.addEventListener('click', () => {
-                if (timeoutId) {
-                    clearTimeout(timeoutId);
-                }
-                if (eventSource) {
-                    eventSource.close();
-                }
-
-                // Also call the cancel endpoint on the server
-                const backendDownloadId = `backend-${downloadId}`;
-                fetch(`http://localhost:3000/downloads/${backendDownloadId}/cancel`, {
-                    method: 'POST'
-                })
-                .then(response => response.json())
-                .then(data => logToServer('info', 'Sent cancel request to server.', data))
-                .catch(err => console.error('Failed to send cancel request to server:', err));
-
-                logToServer('warn', `[Cancelled] Download cancelled by user for URL: ${url}`, { downloadId });
-                statusElement.className = 'download-status-item error';
-                statusElement.innerHTML = `❌ ยกเลิกการดาวน์โหลด '${fileName}'`;
-                activeDownloads.delete(downloadId);
-                if (onCompleteCallback) onCompleteCallback();
-                reject(new Error('Download cancelled by user'));
-            });
-
-            function attemptDownload() {
-                if (retryCount > 0) {
-                    statusText.textContent = `[ลองใหม่ครั้งที่ ${retryCount}/${MAX_RETRIES}] ${fileName}`;
-                }
-
-                eventSource = new EventSource(`http://localhost:3000/download?url=${encodeURIComponent(url)}&downloadId=${downloadId}`);
-
-                const handleFailure = (errorMessage) => {
-                    eventSource.close();
-                    retryCount++;
-                    if (retryCount <= MAX_RETRIES) {
-                        logToServer('warn', `[EventSource] [${downloadId}] Download failed for ${url}. Retrying... (${retryCount}/${MAX_RETRIES})`, { error: errorMessage });
-                        const retryDelay = Math.pow(2, retryCount) * 1000; // Exponential backoff
-                        statusText.textContent = `[ล้มเหลว] ${fileName} - จะลองใหม่ใน ${retryDelay / 1000} วินาที...`;
-                        timeoutId = setTimeout(attemptDownload, retryDelay);
-                    } else {
-                        logToServer('error', `[EventSource] [${downloadId}] Download failed for ${url} after ${MAX_RETRIES} retries.`, { error: errorMessage });
-                        statusElement.className = 'download-status-item error';
-                        statusElement.innerHTML = `❌ ดาวน์โหลด '${fileName}' ล้มเหลว: ${errorMessage}`;
-                        logToServer('error', `[Session End] Download session ended with permanent failure for URL: ${url}`);
-                        activeDownloads.delete(downloadId); // Remove from active set
-                        if (onCompleteCallback) onCompleteCallback();
-                        reject(new Error(errorMessage));
-                    }
-                };
-
-                eventSource.onmessage = (event) => {
-                    try {
-                        const data = JSON.parse(event.data);
-
-                        switch (data.type) {
-                            case 'start':
-                                logToServer('info', `[EventSource] [${downloadId}] Start event for ${url}`, data.message);
-                                statusText.textContent = `[${data.message}] ${fileName}`;
-                                break;
-                            case 'progress':
-                                const percent = Math.round(data.percent);
-                                logToServer('info', `[Progress] [${downloadId}] ${percent}% for ${url}`);
-                                progressBar.style.width = `${percent}%`;
-                                progressBar.textContent = `${data.message} ${percent}%`;
-                                statusText.textContent = `${fileName}`;
-                                break;
-                            case 'done':
-                                logToServer('info', `[EventSource] [${downloadId}] Done event for ${url}`, data);
-                                statusElement.className = 'download-status-item success';
-                                statusElement.innerHTML = `✅ ดาวน์โหลด '${data.title || fileName}' สำเร็จ!`;
-                                eventSource.close();
-                                // Refresh the video list to show the new video
-                                logToServer('info', `[Session End] Download session finished successfully for URL: ${url}`);
-                                setTimeout(() => location.reload(), 2000);
-                                activeDownloads.delete(downloadId); // Remove from active set
-                                if (onCompleteCallback) onCompleteCallback();
-                                resolve(url); // Success
-                                break;
-                            case 'error':
-                                logToServer('error', `[EventSource] [${downloadId}] Error event for ${url}`, data.message);
-                                handleFailure(data.message);
-                                break;
-                            default:
-                                logToServer('warn', `[EventSource] [${downloadId}] Unknown event type for ${url}`, data.type);
-                                break;
-                        }
-                    } catch (parseError) {
-                        logToServer('error', `[EventSource] [${downloadId}] Failed to parse message for ${url}`, parseError.message);
-                        handleFailure('ข้อมูลที่ได้รับจากเซิร์ฟเวอร์ไม่ถูกต้อง');
-                    }
-                };
-
-                eventSource.onerror = (err) => {
-                    logToServer('error', `[EventSource] [${downloadId}] Connection error for ${url}`, err);
-                    handleFailure('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
-                };
-
-                eventSource.onopen = () => {
-                    logToServer('info', `[EventSource] [${downloadId}] Connection opened for: ${url}`);
-                };
+    // Load queue data from server
+    async function loadQueue() {
+        try {
+            const response = await fetch('http://localhost:3000/api/queue');
+            const data = await response.json();
+            
+            if (data.success) {
+                queueData = data.queue;
+                renderQueue();
+                logToServer('info', 'Queue data loaded', { count: queueData.length });
+            } else {
+                logToServer('error', 'Failed to load queue', data);
             }
+        } catch (error) {
+            logToServer('error', 'Error loading queue', { error: error.message });
+            console.error('Error loading queue:', error);
+        }
+    }
 
-            attemptDownload();
+    // Render queue items
+    function renderQueue() {
+        if (queueData.length === 0) {
+            queueList.innerHTML = `
+                <div class="queue-empty">
+                    <div class="queue-empty-icon">📭</div>
+                    <p>ไม่มีรายการในคิว</p>
+                    <p style="font-size: 0.9rem;">เพิ่ม URL ของวิดีโอที่ต้องการดาวน์โหลดด้านบน</p>
+                </div>
+            `;
+            return;
+        }
+
+        queueList.innerHTML = '';
+        queueData.forEach(item => {
+            const queueItem = createQueueItemElement(item);
+            queueList.appendChild(queueItem);
         });
     }
 
+    // Create queue item element
+    function createQueueItemElement(item) {
+        const div = document.createElement('div');
+        div.className = 'queue-item';
+        div.dataset.id = item.id;
 
-    // Function to create a status element for a download
-    function createStatusElement(fileName) {
-        const statusElement = document.createElement('div');
-        statusElement.className = 'download-status-item';
-        statusElement.innerHTML = `
-            <span>กำลังดาวน์โหลด: ${fileName}</span>
-            <div class="progress-section">
-                <div class="progress-bar-container"><div class="progress-bar">0%</div></div>
-                <button class="cancel-btn button">ยกเลิก</button>
+        const statusClass = `status-${item.status.toLowerCase()}`;
+        const statusText = getStatusText(item.status);
+        
+        // Determine thumbnail source
+        const thumbnailSrc = item.thumbnail || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="120" height="90"%3E%3Crect fill="%23dee2e6" width="120" height="90"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%236c757d" font-family="sans-serif" font-size="14"%3ENo Image%3C/text%3E%3C/svg%3E';
+
+        div.innerHTML = `
+            <img src="${thumbnailSrc}" alt="${item.title}" class="queue-item-thumbnail" onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%22120%22 height=%2290%22%3E%3Crect fill=%22%23dee2e6%22 width=%22120%22 height=%2290%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 text-anchor=%22middle%22 dy=%22.3em%22 fill=%22%236c757d%22 font-family=%22sans-serif%22 font-size=%2214%22%3ENo Image%3C/text%3E%3C/svg%3E'">
+            <div class="queue-item-info">
+                <div class="queue-item-title">${item.title}</div>
+                <div class="queue-item-url">${item.url}</div>
+                <div class="queue-item-status">
+                    <span class="status-badge ${statusClass}">${statusText}</span>
+                    ${item.progress > 0 ? `<span>${item.progress}%</span>` : ''}
+                </div>
+                ${item.progress > 0 ? `
+                    <div class="queue-item-progress">
+                        <div class="queue-item-progress-bar" style="width: ${item.progress}%"></div>
+                    </div>
+                ` : ''}
+                ${item.error ? `<div style="color: #721c24; font-size: 0.85rem;">❌ ${item.error}</div>` : ''}
             </div>
         `;
-        downloadStatusContainer.appendChild(statusElement);
-        return statusElement;
+
+        return div;
     }
+
+    // Get status text in Thai
+    function getStatusText(status) {
+        const statusMap = {
+            'PENDING': 'รอดำเนินการ',
+            'DOWNLOADING': 'กำลังดาวน์โหลด',
+            'PAUSED': 'หยุดชั่วคราว',
+            'FAILED': 'ล้มเหลว',
+            'COMPLETED': 'สำเร็จ'
+        };
+        return statusMap[status] || status;
+    }
+
+    // Add URL(s) to queue - supports multiple URLs
+    async function addToQueue() {
+        const urlsText = queueUrlInput.value.trim();
+        
+        if (!urlsText) {
+            alert('กรุณาใส่ URL ของวิดีโอ');
+            return;
+        }
+
+        // Split by comma or newline, then filter out empty strings
+        const urls = urlsText.split(/[,\n]+/).map(url => url.trim()).filter(url => url !== '');
+
+        if (urls.length === 0) {
+            alert('ไม่พบ URL ที่ถูกต้อง');
+            return;
+        }
+
+        // Validate all URLs
+        const invalidUrls = urls.filter(url => !url.startsWith('http://') && !url.startsWith('https://'));
+        if (invalidUrls.length > 0) {
+            alert(`URL ต้องขึ้นต้นด้วย http:// หรือ https://\nURL ที่ไม่ถูกต้อง: ${invalidUrls[0]}`);
+            return;
+        }
+
+        // Disable button
+        addToQueueBtn.disabled = true;
+        addToQueueBtn.textContent = `กำลังเพิ่ม ${urls.length} รายการ...`;
+
+        let successCount = 0;
+        let failedUrls = [];
+
+        // Add each URL to queue
+        for (const url of urls) {
+            try {
+                const response = await fetch('http://localhost:3000/api/queue', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ url })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    successCount++;
+                    logToServer('info', 'Added to queue successfully', { url, id: data.item.id });
+                } else {
+                    failedUrls.push({ url, error: data.error });
+                    logToServer('error', 'Failed to add to queue', { url, error: data.error });
+                }
+            } catch (error) {
+                failedUrls.push({ url, error: error.message });
+                logToServer('error', 'Error adding to queue', { url, error: error.message });
+            }
+        }
+
+        // Reload queue
+        await loadQueue();
+
+        // Show results
+        if (failedUrls.length === 0) {
+            queueUrlInput.value = ''; // Clear input only if all succeeded
+            alert(`✅ เพิ่มเข้าคิวสำเร็จทั้งหมด ${successCount} รายการ!`);
+        } else {
+            // Keep failed URLs in textarea
+            queueUrlInput.value = failedUrls.map(f => f.url).join('\n');
+            alert(`✅ เพิ่มสำเร็จ ${successCount} รายการ\n❌ ล้มเหลว ${failedUrls.length} รายการ\n\nURL ที่ล้มเหลวยังคงอยู่ในช่องกรอก`);
+        }
+
+        // Re-enable button
+        addToQueueBtn.disabled = false;
+        addToQueueBtn.textContent = 'ดาวน์โหลดวิดีโอ';
+    }
+
+    // Event listener for add to queue button
+    addToQueueBtn.addEventListener('click', addToQueue);
+
+    // Allow Ctrl+Enter or Cmd+Enter to add to queue (Enter alone is for new line)
+    queueUrlInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            addToQueue();
+        }
+    });
+
+    // Load queue on page load
+    loadQueue();
 });

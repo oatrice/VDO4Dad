@@ -802,6 +802,80 @@ app.get('/api/queue', (req, res) => {
     }
 });
 
+// Add item to queue endpoint
+app.post('/api/queue', async (req, res) => {
+    try {
+        const { url } = req.body;
+        
+        if (!url) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'URL is required' 
+            });
+        }
+        
+        // Check if URL already exists in queue
+        const existingItem = queueData.find(item => item.url === url);
+        if (existingItem) {
+            logWarn('URL already exists in queue', { url, existingId: existingItem.id });
+            return res.status(409).json({ 
+                success: false, 
+                error: 'URL already exists in queue',
+                existingItem 
+            });
+        }
+        
+        // Fetch video metadata
+        let videoInfo;
+        try {
+            videoInfo = await ytDlpWrap.getVideoInfo(url);
+            logInfo('Fetched video metadata for queue', { title: videoInfo.title, url });
+        } catch (error) {
+            logError('Failed to fetch video metadata', { error: error.message, url });
+            return res.status(400).json({ 
+                success: false, 
+                error: 'ไม่สามารถดึงข้อมูลวิดีโอได้ กรุณาตรวจสอบ URL' 
+            });
+        }
+        
+        // Create new queue item
+        const queueItem = {
+            id: `queue-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            url: url,
+            title: videoInfo.title || 'Unknown Title',
+            thumbnail: videoInfo.thumbnail || videoInfo.thumbnails?.[videoInfo.thumbnails.length - 1]?.url || null,
+            status: QueueStatus.PENDING,
+            progress: 0,
+            pid: null,
+            filePath: null,
+            error: null,
+            addedAt: new Date().toISOString(),
+            startedAt: null,
+            completedAt: null
+        };
+        
+        // Add to queue
+        queueData.push(queueItem);
+        
+        // Save to file
+        saveQueueData();
+        
+        logInfo('Added new item to queue', { id: queueItem.id, title: queueItem.title, url });
+        
+        res.json({ 
+            success: true, 
+            message: 'เพิ่มเข้าคิวสำเร็จ',
+            item: queueItem
+        });
+    } catch (error) {
+        logError('Failed to add item to queue', { error: error.message });
+        res.status(500).json({ 
+            success: false, 
+            error: 'เกิดข้อผิดพลาดในการเพิ่มเข้าคิว' 
+        });
+    }
+});
+
 // Initialize queue data on server start
 loadQueueData();
 recoverQueue();

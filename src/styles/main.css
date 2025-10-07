@@ -249,6 +249,161 @@ h1 {
     background-color: #166fe5;
 }
 
+/* === Queue Manager Styles === */
+.queue-container {
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 24px;
+}
+
+.queue-container h2 {
+    margin-top: 0;
+    margin-bottom: 16px;
+    color: #333;
+}
+
+.queue-add-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.queue-add-section label {
+    font-weight: 500;
+}
+
+.queue-add-section textarea {
+    width: 100%;
+    resize: vertical;
+}
+
+.queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.queue-item {
+    display: flex;
+    gap: 16px;
+    padding: 12px;
+    background-color: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.queue-item:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.queue-item-thumbnail {
+    width: 120px;
+    height: 90px;
+    object-fit: cover;
+    border-radius: 6px;
+    background-color: #dee2e6;
+    flex-shrink: 0;
+}
+
+.queue-item-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.queue-item-title {
+    font-weight: 600;
+    font-size: 1rem;
+    color: #1c1e21;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.queue-item-url {
+    font-size: 0.85rem;
+    color: #65676b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.queue-item-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+.queue-item-progress {
+    width: 100%;
+    height: 6px;
+    background-color: #e9ecef;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.queue-item-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #4caf50, #45a049);
+    transition: width 0.3s ease;
+}
+
+/* Status badges */
+.status-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-pending {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+.status-downloading {
+    background-color: #cfe2ff;
+    color: #084298;
+}
+
+.status-paused {
+    background-color: #f8d7da;
+    color: #842029;
+}
+
+.status-failed {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.status-completed {
+    background-color: #d1e7dd;
+    color: #0f5132;
+}
+
+/* Empty state */
+.queue-empty {
+    text-align: center;
+    padding: 40px 20px;
+    color: #65676b;
+}
+
+.queue-empty-icon {
+    font-size: 3rem;
+    margin-bottom: 12px;
+}
+
 /* === Responsive Design (Media Query) === */
 /* For screens smaller than 992px (tablets and mobile phones) */
 @media (max-width: 992px) {
@@ -258,5 +413,15 @@ h1 {
 
     .video-list-container {
         max-height: 40vh; /* Adjust height for vertical layout */
+    }
+    
+    .queue-item {
+        flex-direction: column;
+    }
+    
+    .queue-item-thumbnail {
+        width: 100%;
+        height: auto;
+        aspect-ratio: 16/9;
     }
 }
