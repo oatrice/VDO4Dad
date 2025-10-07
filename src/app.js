@@ -25,6 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // Use beacon for reliability on unload
             logToServer('warn', `[Incomplete] ${message}`, { activeIds: [...activeDownloads] }, true);
         }
+
+        // Disconnect from SSE on page unload
+        disconnectFromQueueEvents();
     });
 
     // Function to load videos
@@ -139,6 +142,90 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ========== Queue Manager Functions ==========
+
+    let queueEventSource = null;
+
+    // Connect to SSE for real-time queue updates
+    function connectToQueueEvents() {
+        if (queueEventSource) {
+            queueEventSource.close();
+        }
+
+        queueEventSource = new EventSource('http://localhost:3000/api/queue/events');
+
+        queueEventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                handleQueueEvent(data);
+            } catch (error) {
+                console.error('Error parsing SSE message:', error);
+            }
+        };
+
+        queueEventSource.onerror = (error) => {
+            console.error('SSE connection error:', error);
+        };
+
+        queueEventSource.onopen = () => {
+            logToServer('info', 'Connected to queue events SSE');
+        };
+    }
+
+    // Handle queue events from SSE
+    function handleQueueEvent(eventData) {
+        switch (eventData.type) {
+            case 'connected':
+                logToServer('info', 'Connected to queue events');
+                break;
+
+            case 'queue_updated':
+                handleQueueUpdate(eventData);
+                break;
+
+            default:
+                logToServer('info', 'Unknown queue event type', { type: eventData.type });
+        }
+    }
+
+    // Handle queue update events
+    function handleQueueUpdate(eventData) {
+        const { action, item } = eventData;
+
+        switch (action) {
+            case 'item_started':
+                logToServer('info', 'Queue item started', { id: item.id });
+                updateQueueItemStatus(item.id, 'DOWNLOADING');
+                break;
+
+            case 'progress':
+                updateQueueItemProgress(item.id, item.progress);
+                break;
+
+            case 'item_completed':
+                logToServer('info', 'Queue item completed', { id: item.id });
+                updateQueueItemStatus(item.id, 'COMPLETED');
+
+                // Reload videos if new item completed
+                loadVideos();
+                break;
+
+            case 'item_failed':
+                logToServer('error', 'Queue item failed', { id: item.id, error: item.error });
+                updateQueueItemStatus(item.id, 'FAILED', item.error);
+                break;
+
+            default:
+                logToServer('info', 'Unknown queue update action', { action });
+        }
+    }
+
+    // Disconnect from SSE
+    function disconnectFromQueueEvents() {
+        if (queueEventSource) {
+            queueEventSource.close();
+            queueEventSource = null;
+        }
+    }
 
     // Load queue data from server
     async function loadQueue(showLoading = false) {
@@ -564,4 +651,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Load queue on page load with loading indicator
     loadQueue(true);
+
+    // Connect to queue events SSE
+    connectToQueueEvents();
 });

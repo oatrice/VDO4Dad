@@ -125,29 +125,94 @@ function saveQueueData() {
     }
 }
 
+// SSE endpoint for queue updates
+app.get('/api/queue/events', (req, res) => {
+    // Set headers for Server-Sent Events
+    res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Cache-Control'
+    });
+
+    // Send initial connection message
+    res.write(`data: ${JSON.stringify({
+        type: 'connected',
+        message: 'Connected to queue events'
+    })}\n\n`);
+
+    logInfo('[SSE] Queue events client connected');
+
+    // Store the response object to send events later
+    if (!global.queueEventClients) {
+        global.queueEventClients = new Set();
+    }
+    global.queueEventClients.add(res);
+
+    // Handle client disconnect
+    req.on('close', () => {
+        global.queueEventClients.delete(res);
+        logInfo('[SSE] Queue events client disconnected');
+    });
+});
+
+// Function to broadcast queue updates to all connected clients
+function broadcastQueueUpdate(eventData) {
+    try {
+        if (global.queueEventClients && global.queueEventClients.size > 0) {
+            const message = `data: ${JSON.stringify(eventData)}\n\n`;
+
+            // Send to all connected clients
+            for (const client of global.queueEventClients) {
+                try {
+                    client.write(message);
+                } catch (error) {
+                    // Remove disconnected clients
+                    global.queueEventClients.delete(client);
+                }
+            }
+
+            logInfo('[SSE] Broadcasted queue update', {
+                type: eventData.type,
+                clients: global.queueEventClients.size
+            });
+        }
+    } catch (error) {
+        logError('[SSE] Failed to broadcast queue update', { error: error.message });
+    }
+}
+
 // Function to automatically start next pending item in queue
 function startNextQueueItem() {
     try {
         // Find the next pending item
         const nextItem = queueData.find(item => item.status === QueueStatus.PENDING);
-        
+
         if (nextItem) {
-            logInfo('[Auto Queue] Starting next pending item', { 
-                id: nextItem.id, 
+            logInfo('[Auto Queue] Starting next pending item', {
+                id: nextItem.id,
                 title: nextItem.title,
                 url: nextItem.url
             });
-            
+
             // Start download by making internal request to download stream endpoint
             // We'll use a simple approach - just update status and let the frontend poll
             nextItem.status = QueueStatus.DOWNLOADING;
             nextItem.startedAt = new Date().toISOString();
             nextItem.pid = 'auto-started';
             saveQueueData();
-            
+
+            // Broadcast queue update via SSE
+            broadcastQueueUpdate({
+                type: 'queue_updated',
+                action: 'item_started',
+                item: nextItem
+            });
+
             // Start the actual download process
             startQueueItemDownload(nextItem);
-            
+
         } else {
             logInfo('[Auto Queue] No more pending items in queue');
         }
@@ -195,6 +260,17 @@ async function startQueueItemDownload(queueItem) {
         downloadProcess.on('progress', (progress) => {
             queueItem.progress = Math.round(progress.percent || 0);
             saveQueueData();
+
+            // Broadcast progress update
+            broadcastQueueUpdate({
+                type: 'queue_updated',
+                action: 'progress',
+                item: {
+                    id: queueItem.id,
+                    progress: queueItem.progress,
+                    status: queueItem.status
+                }
+            });
         });
         
         // Handle completion
@@ -206,29 +282,43 @@ async function startQueueItemDownload(queueItem) {
                 queueItem.filePath = `videos/${queueItem.id}.mp4`;
                 queueItem.pid = null;
                 saveQueueData();
-                
+
                 // Add to videos.json
                 addToVideosJson(queueItem);
-                
-                logInfo('[Auto Queue Download] Download completed successfully', { 
-                    id: queueItem.id, 
-                    title: queueItem.title 
+
+                logInfo('[Auto Queue Download] Download completed successfully', {
+                    id: queueItem.id,
+                    title: queueItem.title
                 });
-                
+
+                // Broadcast completion update
+                broadcastQueueUpdate({
+                    type: 'queue_updated',
+                    action: 'item_completed',
+                    item: queueItem
+                });
+
                 // Start next item
                 startNextQueueItem();
-                
+
             } else {
                 queueItem.status = QueueStatus.FAILED;
                 queueItem.error = `Download failed with exit code: ${code}`;
                 queueItem.pid = null;
                 saveQueueData();
-                
-                logError('[Auto Queue Download] Download failed', { 
-                    id: queueItem.id, 
-                    exitCode: code 
+
+                logError('[Auto Queue Download] Download failed', {
+                    id: queueItem.id,
+                    exitCode: code
                 });
-                
+
+                // Broadcast failure update
+                broadcastQueueUpdate({
+                    type: 'queue_updated',
+                    action: 'item_failed',
+                    item: queueItem
+                });
+
                 // Still try to start next item even if this one failed
                 startNextQueueItem();
             }
@@ -240,12 +330,19 @@ async function startQueueItemDownload(queueItem) {
             queueItem.error = error.message;
             queueItem.pid = null;
             saveQueueData();
-            
-            logError('[Auto Queue Download] Download error', { 
-                id: queueItem.id, 
-                error: error.message 
+
+            logError('[Auto Queue Download] Download error', {
+                id: queueItem.id,
+                error: error.message
             });
-            
+
+            // Broadcast error update
+            broadcastQueueUpdate({
+                type: 'queue_updated',
+                action: 'item_failed',
+                item: queueItem
+            });
+
             // Still try to start next item even if this one failed
             startNextQueueItem();
         });
@@ -1092,19 +1189,26 @@ app.get('/api/queue/:id/download-stream', async (req, res) => {
             queueItem.filePath = outputPath;
             queueItem.pid = null;
             saveQueueData();
-            
+
             // Add to videos.json
             addToVideosJson(queueItem);
-            
-            res.write(`data: ${JSON.stringify({ 
-                type: 'done', 
+
+            res.write(`data: ${JSON.stringify({
+                type: 'done',
                 title: queueItem.title,
                 queueId: id
             })}\n\n`);
             res.end();
-            
+
             logInfo('[Queue Download Stream] Download completed', { queueId: id });
-            
+
+            // Broadcast completion update via SSE
+            broadcastQueueUpdate({
+                type: 'queue_updated',
+                action: 'item_completed',
+                item: queueItem
+            });
+
             // Auto-start next pending item in queue
             startNextQueueItem();
         });
@@ -1115,15 +1219,22 @@ app.get('/api/queue/:id/download-stream', async (req, res) => {
             queueItem.error = error.message;
             queueItem.pid = null;
             saveQueueData();
-            
-            res.write(`data: ${JSON.stringify({ 
-                type: 'error', 
-                message: error.message 
+
+            res.write(`data: ${JSON.stringify({
+                type: 'error',
+                message: error.message
             })}\n\n`);
             res.end();
-            
+
             logError('[Queue Download Stream] Download error', { queueId: id, error: error.message });
-            
+
+            // Broadcast error update via SSE
+            broadcastQueueUpdate({
+                type: 'queue_updated',
+                action: 'item_failed',
+                item: queueItem
+            });
+
             // Auto-start next pending item even if this one failed
             startNextQueueItem();
         });
@@ -1143,6 +1254,13 @@ app.delete('/api/queue', (req, res) => {
         saveQueueData();
         
         logInfo('Queue cleared', { previousCount });
+        
+        // Broadcast queue update for cleared queue
+        broadcastQueueUpdate({
+            type: 'queue_updated',
+            action: 'queue_cleared',
+            clearedCount: previousCount
+        });
         
         res.json({ 
             success: true, 
@@ -1255,15 +1373,22 @@ app.post('/api/queue/batch', async (req, res) => {
         
         // Save to file once after all items processed
         saveQueueData();
-        
-        logInfo('[Add Batch to Queue API] Batch processing completed', { 
+
+        logInfo('[Add Batch to Queue API] Batch processing completed', {
             total: urls.length,
             success: successCount,
             failed: failedCount,
             queueSize: queueData.length
         });
-        
-        res.json({ 
+
+        // Broadcast queue update for new items
+        broadcastQueueUpdate({
+            type: 'queue_updated',
+            action: 'items_added',
+            count: successCount
+        });
+
+        res.json({
             success: true,
             message: `เพิ่มเข้าคิวสำเร็จ ${successCount}/${urls.length} รายการ`,
             results,
