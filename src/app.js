@@ -206,7 +206,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="queue-item-url">${item.url}</div>
                 <div class="queue-item-status">
                     <span class="status-badge ${statusClass}">${statusText}</span>
-                    ${item.progress > 0 ? `<span>${item.progress}%</span>` : ''}
                 </div>
                 ${item.progress > 0 || item.status === 'DOWNLOADING' ? `
                     <div class="queue-item-progress">
