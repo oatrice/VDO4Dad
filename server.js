@@ -224,23 +224,23 @@ function startNextQueueItem() {
 // Function to start download for a specific queue item
 async function startQueueItemDownload(queueItem) {
     try {
-        logInfo('[Auto Queue Download] Starting download', { 
-            id: queueItem.id, 
-            title: queueItem.title 
+        logInfo('[Auto Queue Download] Starting download', {
+            id: queueItem.id,
+            title: queueItem.title
         });
-        
+
         const videosDir = path.join(__dirname, 'src', 'videos');
         if (!fs.existsSync(videosDir)) {
             fs.mkdirSync(videosDir, { recursive: true });
         }
-        
+
         // Sanitize filename
         const sanitizedTitle = queueItem.title
             .replace(/\|/g, '｜')
             .replace(/[<>:"/\\?*]/g, '');
-        
+
         const outputPath = path.join(videosDir, `${queueItem.id}.%(ext)s`);
-        
+
         const options = [
             '--output', outputPath,
             '--format', 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]',
@@ -253,23 +253,53 @@ async function startQueueItemDownload(queueItem) {
             '--fragment-retries', '10',
             '--retry-sleep', '1'
         ];
-        
+
         const downloadProcess = ytDlpWrap.exec([queueItem.url, ...options]);
-        
+
+        // Track download stages for progress calculation
+        let downloadStage = 'video'; // video, audio
+        let stageOffset = 0; // 0 for video, 50 for audio
+
         // Handle progress
         downloadProcess.on('progress', (progress) => {
-            queueItem.progress = Math.round(progress.percent || 0);
+            const rawPercent = progress.percent || 0;
+
+            // Detect stage change: if progress goes backwards, we're in a new stage
+            if (rawPercent < queueItem.progress && queueItem.progress > 90) {
+                // Progress went backwards after reaching high value = new stage (audio)
+                downloadStage = 'audio';
+                stageOffset = 50;
+                logInfo('[Auto Queue Download] Stage changed to audio', { queueId: queueItem.id });
+            }
+
+            // Calculate final percent: each stage is 50% of total
+            const finalPercent = Math.min(100, Math.round(stageOffset + (rawPercent / 2)));
+
+            const message = downloadStage === 'video'
+                ? `[1/2] กำลังดาวน์โหลดวิดีโอ`
+                : `[2/2] กำลังดาวน์โหลดเสียง`;
+
+            queueItem.progress = finalPercent;
             saveQueueData();
 
-            // Broadcast progress update
+            // Broadcast progress update with message
             broadcastQueueUpdate({
                 type: 'queue_updated',
                 action: 'progress',
                 item: {
                     id: queueItem.id,
-                    progress: queueItem.progress,
-                    status: queueItem.status
+                    progress: finalPercent,
+                    status: queueItem.status,
+                    message: message
                 }
+            });
+
+            logInfo('[Auto Queue Download] Progress', {
+                queueId: queueItem.id,
+                rawPercent,
+                finalPercent,
+                stage: downloadStage,
+                stageOffset
             });
         });
         

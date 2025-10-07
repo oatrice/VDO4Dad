@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
 
             case 'progress':
-                updateQueueItemProgress(item.id, item.progress);
+                updateQueueItemProgress(item.id, item.progress, item.message);
                 break;
 
             case 'item_completed':
@@ -498,7 +498,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             
                         case 'progress':
                             // Update progress bar in real-time (no reload)
-                            updateQueueItemProgress(queueId, data.percent);
+                            updateQueueItemProgress(queueId, data.percent, data.message);
                             break;
                             
                         case 'done':
@@ -530,10 +530,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Update queue item progress in UI (real-time, no reload)
-    function updateQueueItemProgress(queueId, percent) {
+    function updateQueueItemProgress(queueId, percent, message = null) {
         const queueItem = document.querySelector(`[data-id="${queueId}"]`);
         if (!queueItem) return;
-        
+
         // Update or create progress bar
         let progressContainer = queueItem.querySelector('.queue-item-progress');
         if (!progressContainer) {
@@ -544,23 +544,27 @@ document.addEventListener('DOMContentLoaded', () => {
             progressContainer.innerHTML = '<div class="queue-progress-bar" style="width: 0%">0%</div>';
             infoDiv.appendChild(progressContainer);
         }
-        
+
         const progressBar = progressContainer.querySelector('.queue-progress-bar');
         if (progressBar) {
             progressBar.style.width = `${percent}%`;
-            progressBar.textContent = `${percent}%`;
+            progressBar.textContent = message || `${percent}%`;
         }
-        
-        // Update status text to show percent
+
+        // Update status text to show percent for downloading items
         const statusBadge = queueItem.querySelector('.queue-item-status');
         if (statusBadge) {
-            const percentSpan = statusBadge.querySelector('span:last-child');
-            if (percentSpan && !percentSpan.classList.contains('status-badge')) {
-                percentSpan.textContent = `${percent}%`;
-            } else if (!percentSpan) {
-                const newSpan = document.createElement('span');
-                newSpan.textContent = `${percent}%`;
-                statusBadge.appendChild(newSpan);
+            // Find the downloading item and update its percentage
+            const queueItemData = queueData.find(item => item.id === queueId);
+            if (queueItemData && queueItemData.status === 'DOWNLOADING') {
+                const percentSpan = statusBadge.querySelector('span:last-child');
+                if (percentSpan && !percentSpan.classList.contains('status-badge')) {
+                    percentSpan.textContent = message || `${percent}%`;
+                } else if (!percentSpan) {
+                    const newSpan = document.createElement('span');
+                    newSpan.textContent = message || `${percent}%`;
+                    statusBadge.appendChild(newSpan);
+                }
             }
         }
     }
