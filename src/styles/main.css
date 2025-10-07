@@ -268,17 +268,33 @@ h1 {
     margin-bottom: 24px;
 }
 
-.queue-header {
+.queue-container h2 {
+    margin-top: 0;
+    margin-bottom: 16px;
+    color: #333;
+}
+
+.queue-list-wrapper {
+    position: relative;
+}
+
+.queue-list-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
-    gap: 16px;
+    margin-bottom: 12px;
 }
 
-.queue-header h2 {
-    margin: 0;
+.queue-list-title {
+    font-size: 1rem;
+    font-weight: 600;
     color: #333;
+    margin: 0;
+}
+
+.clear-queue-btn {
+    font-size: 0.85rem;
+    padding: 6px 12px;
 }
 
 .queue-add-section {
@@ -516,14 +532,5 @@ h1 {
     .queue-item {
         min-width: 240px;
         max-width: 240px;
-    }
-    
-    .queue-header {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .queue-header h2 {
-        text-align: center;
     }
 }

@@ -12,16 +12,15 @@
         
         <!-- Queue Manager Section -->
         <div id="queue-section" class="queue-container">
-            <div class="queue-header">
-                <h2>📋 Download Queue Manager</h2>
-                <button id="clear-queue-btn" class="button button-secondary">🗑️ Clear All</button>
-            </div>
+            <h2>📋 Download Queue Manager</h2>
             <div class="queue-add-section">
                 <label for="queue-url-input">เพิ่ม URL เข้าคิว (คั่นด้วยคอมม่าหรือขึ้นบรรทัดใหม่) - กด Ctrl+Enter เพื่อเพิ่ม:</label>
                 <textarea id="queue-url-input" class="url-input" rows="4" placeholder="เช่น https://www.youtube.com/watch?v=COcc7SZsRyQ, https://youtu.be/COcc7SZsRyQ&#10;หรือขึ้นบรรทัดใหม่สำหรับแต่ละ URL"></textarea>
                 <button id="add-to-queue-btn" class="button">ดาวน์โหลดวิดีโอ</button>
             </div>
-            <div id="queue-list" class="queue-list"></div>
+            <div id="queue-list-wrapper">
+                <div id="queue-list" class="queue-list"></div>
+            </div>
         </div>
         <div class="main-content">
             <div id="video-player-container">

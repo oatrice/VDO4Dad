@@ -9,8 +9,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Queue Manager elements
     const queueUrlInput = document.getElementById('queue-url-input');
     const addToQueueBtn = document.getElementById('add-to-queue-btn');
-    const clearQueueBtn = document.getElementById('clear-queue-btn');
+    const queueListWrapper = document.getElementById('queue-list-wrapper');
     const queueList = document.getElementById('queue-list');
+    let clearQueueBtn = null; // Will be created dynamically
 
     let videos = [];
     let currentVideoIndex = 0;
@@ -141,21 +142,42 @@ document.addEventListener('DOMContentLoaded', () => {
     // Render queue items
     function renderQueue() {
         if (queueData.length === 0) {
-            queueList.innerHTML = `
+            queueListWrapper.innerHTML = `
                 <div class="queue-empty">
                     <div class="queue-empty-icon">📭</div>
                     <p>ไม่มีรายการในคิว</p>
                     <p style="font-size: 0.9rem;">เพิ่ม URL ของวิดีโอที่ต้องการดาวน์โหลดด้านบน</p>
                 </div>
             `;
+            clearQueueBtn = null;
             return;
         }
 
-        queueList.innerHTML = '';
+        // Create header with Clear All button
+        const headerHtml = `
+            <div class="queue-list-header">
+                <h3 class="queue-list-title">รายการคิว (${queueData.length})</h3>
+                <button id="clear-queue-btn" class="button button-secondary clear-queue-btn">🗑️ Clear All</button>
+            </div>
+            <div id="queue-list" class="queue-list"></div>
+        `;
+        
+        queueListWrapper.innerHTML = headerHtml;
+        
+        // Get the new queue list element
+        const newQueueList = document.getElementById('queue-list');
+        
+        // Render queue items
         queueData.forEach(item => {
             const queueItem = createQueueItemElement(item);
-            queueList.appendChild(queueItem);
+            newQueueList.appendChild(queueItem);
         });
+        
+        // Attach event listener to Clear All button
+        clearQueueBtn = document.getElementById('clear-queue-btn');
+        if (clearQueueBtn) {
+            clearQueueBtn.addEventListener('click', clearQueue);
+        }
     }
 
     // Create queue item element
@@ -211,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="queue-loading-text">${message}</div>
             </div>
         `;
-        queueList.innerHTML = loadingHtml;
+        queueListWrapper.innerHTML = loadingHtml;
     }
 
     // Hide loading state
@@ -337,9 +359,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Event listener for add to queue button
     addToQueueBtn.addEventListener('click', addToQueue);
-
-    // Event listener for clear queue button
-    clearQueueBtn.addEventListener('click', clearQueue);
 
     // Allow Ctrl+Enter or Cmd+Enter to add to queue (Enter alone is for new line)
     queueUrlInput.addEventListener('keydown', (e) => {
