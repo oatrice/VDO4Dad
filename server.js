@@ -802,6 +802,29 @@ app.get('/api/queue', (req, res) => {
     }
 });
 
+// Clear all queue items
+app.delete('/api/queue', (req, res) => {
+    try {
+        const previousCount = queueData.length;
+        queueData = [];
+        saveQueueData();
+        
+        logInfo('Queue cleared', { previousCount });
+        
+        res.json({ 
+            success: true, 
+            message: 'ลบคิวทั้งหมดสำเร็จ',
+            clearedCount: previousCount
+        });
+    } catch (error) {
+        logError('Failed to clear queue', { error: error.message });
+        res.status(500).json({ 
+            success: false, 
+            error: 'เกิดข้อผิดพลาดในการลบคิว' 
+        });
+    }
+});
+
 // Add item to queue endpoint
 app.post('/api/queue', async (req, res) => {
     try {

@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Queue Manager elements
     const queueUrlInput = document.getElementById('queue-url-input');
     const addToQueueBtn = document.getElementById('add-to-queue-btn');
+    const clearQueueBtn = document.getElementById('clear-queue-btn');
     const queueList = document.getElementById('queue-list');
 
     let videos = [];
@@ -295,8 +296,50 @@ document.addEventListener('DOMContentLoaded', () => {
         addToQueueBtn.classList.remove('loading');
     }
 
+    // Clear all queue items
+    async function clearQueue() {
+        if (queueData.length === 0) {
+            alert('ไม่มีรายการในคิว');
+            return;
+        }
+
+        const confirmed = confirm(`คุณต้องการลบรายการทั้งหมด ${queueData.length} รายการใช่หรือไม่?`);
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            clearQueueBtn.disabled = true;
+            clearQueueBtn.classList.add('loading');
+
+            const response = await fetch('http://localhost:3000/api/queue', {
+                method: 'DELETE'
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                logToServer('info', 'Queue cleared successfully', { clearedCount: data.clearedCount });
+                await loadQueue();
+                alert(`✅ ลบคิวทั้งหมดสำเร็จ (${data.clearedCount} รายการ)`);
+            } else {
+                logToServer('error', 'Failed to clear queue', data);
+                alert(`❌ ${data.error}`);
+            }
+        } catch (error) {
+            logToServer('error', 'Error clearing queue', { error: error.message });
+            alert('❌ เกิดข้อผิดพลาด: ' + error.message);
+        } finally {
+            clearQueueBtn.disabled = false;
+            clearQueueBtn.classList.remove('loading');
+        }
+    }
+
     // Event listener for add to queue button
     addToQueueBtn.addEventListener('click', addToQueue);
+
+    // Event listener for clear queue button
+    clearQueueBtn.addEventListener('click', clearQueue);
 
     // Allow Ctrl+Enter or Cmd+Enter to add to queue (Enter alone is for new line)
     queueUrlInput.addEventListener('keydown', (e) => {

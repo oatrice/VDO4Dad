@@ -14,3 +14,4 @@ node_modules
 src/videos
 test-results
 logs
+src/data/queue_data.json

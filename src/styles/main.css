@@ -249,6 +249,16 @@ h1 {
     background-color: #166fe5;
 }
 
+.button-secondary {
+    background-color: #dc3545;
+    font-size: 0.9rem;
+    padding: 8px 16px;
+}
+
+.button-secondary:hover {
+    background-color: #c82333;
+}
+
 /* === Queue Manager Styles === */
 .queue-container {
     background-color: #fff;
@@ -258,9 +268,16 @@ h1 {
     margin-bottom: 24px;
 }
 
-.queue-container h2 {
-    margin-top: 0;
+.queue-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 16px;
+    gap: 16px;
+}
+
+.queue-header h2 {
+    margin: 0;
     color: #333;
 }
 
@@ -499,5 +516,14 @@ h1 {
     .queue-item {
         min-width: 240px;
         max-width: 240px;
+    }
+    
+    .queue-header {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .queue-header h2 {
+        text-align: center;
     }
 }
