@@ -241,7 +241,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Will be replaced by renderQueue()
     }
 
-    // Add URL(s) to queue - supports multiple URLs
+    // Add URL(s) to queue and start downloading immediately
     async function addToQueue() {
         const urlsText = queueUrlInput.value.trim();
         
@@ -272,8 +272,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let successCount = 0;
         let failedUrls = [];
+        let queuedItems = []; // Store successfully queued items
 
-        // Add each URL to queue
+        // Add each URL to queue first
         for (const url of urls) {
             try {
                 const response = await fetch('http://localhost:3000/api/queue', {
@@ -288,6 +289,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (data.success) {
                     successCount++;
+                    queuedItems.push(data.item);
                     logToServer('info', 'Added to queue successfully', { url, id: data.item.id });
                 } else {
                     failedUrls.push({ url, error: data.error });
@@ -306,16 +308,22 @@ document.addEventListener('DOMContentLoaded', () => {
         // Show results
         if (failedUrls.length === 0) {
             queueUrlInput.value = ''; // Clear input only if all succeeded
-            alert(`✅ เพิ่มเข้าคิวสำเร็จทั้งหมด ${successCount} รายการ!`);
         } else {
             // Keep failed URLs in textarea
             queueUrlInput.value = failedUrls.map(f => f.url).join('\n');
-            alert(`✅ เพิ่มสำเร็จ ${successCount} รายการ\n❌ ล้มเหลว ${failedUrls.length} รายการ\n\nURL ที่ล้มเหลวยังคงอยู่ในช่องกรอก`);
         }
 
         // Re-enable button
         addToQueueBtn.disabled = false;
         addToQueueBtn.classList.remove('loading');
+
+        // Start downloading queued items immediately
+        if (queuedItems.length > 0) {
+            alert(`✅ เพิ่มเข้าคิวและเริ่มดาวน์โหลด ${successCount} รายการ!`);
+            // TODO: Phase 2 - Start download from queue
+        } else if (failedUrls.length > 0) {
+            alert(`❌ ล้มเหลว ${failedUrls.length} รายการ\n\nURL ที่ล้มเหลวยังคงอยู่ในช่องกรอก`);
+        }
     }
 
     // Clear all queue items
