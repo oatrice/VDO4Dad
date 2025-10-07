@@ -143,7 +143,7 @@ function addToVideosJson(queueItem) {
             title: queueItem.title,
             description: `Downloaded from: ${queueItem.url}`,
             thumbnail: queueItem.thumbnail,
-            videoFile: `${queueItem.id}.mp4`,
+            filePath: `videos/${queueItem.id}.mp4`,
             addedAt: queueItem.completedAt
         };
         
@@ -212,7 +212,8 @@ function updateVideosJson(videoInfo) {
         videos.unshift({
             title: videoInfo.title || 'วิดีโอใหม่',
             description: videoInfo.description || 'วิดีโอที่ดาวโหลดใหม่',
-            filePath: videoInfo.filePath
+            filePath: videoInfo.filePath,
+            thumbnail: videoInfo.thumbnail
         });
         
         fs.writeFileSync(videosPath, JSON.stringify(videos, null, 4));
