@@ -115,8 +115,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // ========== Queue Manager Functions ==========
 
     // Load queue data from server
-    async function loadQueue() {
+    async function loadQueue(showLoading = false) {
         try {
+            if (showLoading) {
+                showLoadingState('กำลังโหลดคิว...');
+            }
+            
             const response = await fetch('http://localhost:3000/api/queue');
             const data = await response.json();
             
@@ -198,6 +202,22 @@ document.addEventListener('DOMContentLoaded', () => {
         return statusMap[status] || status;
     }
 
+    // Show loading state
+    function showLoadingState(message) {
+        const loadingHtml = `
+            <div class="queue-loading">
+                <div class="queue-loading-spinner"></div>
+                <div class="queue-loading-text">${message}</div>
+            </div>
+        `;
+        queueList.innerHTML = loadingHtml;
+    }
+
+    // Hide loading state
+    function hideLoadingState() {
+        // Will be replaced by renderQueue()
+    }
+
     // Add URL(s) to queue - supports multiple URLs
     async function addToQueue() {
         const urlsText = queueUrlInput.value.trim();
@@ -222,9 +242,10 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Disable button
+        // Show loading state
         addToQueueBtn.disabled = true;
-        addToQueueBtn.textContent = `กำลังเพิ่ม ${urls.length} รายการ...`;
+        addToQueueBtn.classList.add('loading');
+        showLoadingState(`กำลังเพิ่ม ${urls.length} รายการเข้าคิว...`);
 
         let successCount = 0;
         let failedUrls = [];
@@ -255,7 +276,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // Reload queue
+        // Hide loading and reload queue
+        hideLoadingState();
         await loadQueue();
 
         // Show results
@@ -270,7 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Re-enable button
         addToQueueBtn.disabled = false;
-        addToQueueBtn.textContent = 'ดาวน์โหลดวิดีโอ';
+        addToQueueBtn.classList.remove('loading');
     }
 
     // Event listener for add to queue button
@@ -284,6 +306,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Load queue on page load
-    loadQueue();
+    // Load queue on page load with loading indicator
+    loadQueue(true);
 });
