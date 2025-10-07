@@ -125,6 +125,47 @@ function saveQueueData() {
     }
 }
 
+// Function to add completed download to videos.json
+function addToVideosJson(queueItem) {
+    try {
+        const videosJsonPath = path.join(__dirname, 'src', 'data', 'videos.json');
+        
+        // Read existing videos
+        let videos = [];
+        if (fs.existsSync(videosJsonPath)) {
+            const videosData = fs.readFileSync(videosJsonPath, 'utf8');
+            videos = JSON.parse(videosData);
+        }
+        
+        // Create video entry
+        const videoEntry = {
+            id: queueItem.id,
+            title: queueItem.title,
+            description: `Downloaded from: ${queueItem.url}`,
+            thumbnail: queueItem.thumbnail,
+            videoFile: `${queueItem.id}.mp4`,
+            addedAt: queueItem.completedAt
+        };
+        
+        // Check if already exists
+        const existingIndex = videos.findIndex(v => v.id === queueItem.id);
+        if (existingIndex >= 0) {
+            videos[existingIndex] = videoEntry;
+            logInfo('Updated existing video in videos.json', { id: queueItem.id });
+        } else {
+            videos.push(videoEntry);
+            logInfo('Added new video to videos.json', { id: queueItem.id, title: queueItem.title });
+        }
+        
+        // Save videos.json
+        fs.writeFileSync(videosJsonPath, JSON.stringify(videos, null, 2), 'utf8');
+        logInfo('videos.json saved successfully', { totalVideos: videos.length });
+        
+    } catch (error) {
+        logError('Failed to add video to videos.json', { error: error.message });
+    }
+}
+
 // Function to recover queue on server start
 function recoverQueue() {
     logInfo('Starting queue recovery process');
@@ -802,57 +843,76 @@ app.get('/api/queue', (req, res) => {
     }
 });
 
-// Start download for a queue item
-app.post('/api/queue/:id/start', async (req, res) => {
+// Start download for a queue item with SSE progress
+app.get('/api/queue/:id/download-stream', async (req, res) => {
+    const { id } = req.params;
+    
+    logInfo('[Queue Download Stream] Starting SSE stream', { queueId: id });
+    
+    // Set SSE headers
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    
     try {
-        const { id } = req.params;
-        
-        logInfo('[Start Download API] Received request to start download', { queueId: id });
-        
         // Find queue item
         const queueItem = queueData.find(item => item.id === id);
         if (!queueItem) {
-            logWarn('[Start Download API] Queue item not found', { queueId: id });
-            return res.status(404).json({ 
-                success: false, 
-                error: 'Queue item not found' 
-            });
+            res.write(`data: ${JSON.stringify({ type: 'error', message: 'Queue item not found' })}\n\n`);
+            res.end();
+            return;
         }
         
         // Check if already downloading
         if (queueItem.status === QueueStatus.DOWNLOADING) {
-            logWarn('[Start Download API] Item already downloading', { queueId: id });
-            return res.status(409).json({ 
-                success: false, 
-                error: 'Item is already downloading' 
-            });
+            res.write(`data: ${JSON.stringify({ type: 'error', message: 'Already downloading' })}\n\n`);
+            res.end();
+            return;
         }
         
-        // Update status to DOWNLOADING
+        // Update status
         queueItem.status = QueueStatus.DOWNLOADING;
         queueItem.startedAt = new Date().toISOString();
         queueItem.progress = 0;
         saveQueueData();
         
-        logInfo('[Start Download API] Starting yt-dlp process', { 
-            queueId: id, 
-            url: queueItem.url,
-            title: queueItem.title
-        });
+        // Send start event
+        res.write(`data: ${JSON.stringify({ type: 'start', message: 'เริ่มดาวน์โหลด' })}\n\n`);
         
-        // Start download process
         const outputPath = path.join(__dirname, 'src', 'videos', `${queueItem.id}.mp4`);
         
-        // Use execPromise for better async handling
-        ytDlpWrap.execPromise([
+        // Start download using existing download logic
+        const downloadProcess = ytDlpWrap.exec([
             queueItem.url,
             '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             '-o', outputPath,
             '--newline',
             '--no-playlist',
-            '--progress'
-        ]).then(() => {
-            // Download completed successfully
+            '--ffmpeg-location', ffmpegPath
+        ]);
+        
+        queueItem.pid = downloadProcess.ytDlpProcess?.pid || null;
+        saveQueueData();
+        
+        logInfo('[Queue Download Stream] Download process started', { queueId: id, pid: queueItem.pid });
+        
+        // Handle progress
+        downloadProcess.on('progress', (progress) => {
+            const percent = Math.round(progress.percent);
+            queueItem.progress = percent;
+            saveQueueData();
+            
+            res.write(`data: ${JSON.stringify({ 
+                type: 'progress', 
+                percent: percent,
+                message: 'กำลังดาวน์โหลด'
+            })}\n\n`);
+            
+            logInfo('[Queue Download Stream] Progress', { queueId: id, percent });
+        });
+        
+        // Handle completion
+        downloadProcess.on('close', () => {
             queueItem.status = QueueStatus.COMPLETED;
             queueItem.progress = 100;
             queueItem.completedAt = new Date().toISOString();
@@ -860,40 +920,39 @@ app.post('/api/queue/:id/start', async (req, res) => {
             queueItem.pid = null;
             saveQueueData();
             
-            logInfo('[Start Download API] Download completed successfully', { 
-                queueId: id, 
-                filePath: outputPath 
-            });
-        }).catch((error) => {
-            // Download failed
+            // Add to videos.json
+            addToVideosJson(queueItem);
+            
+            res.write(`data: ${JSON.stringify({ 
+                type: 'done', 
+                title: queueItem.title,
+                queueId: id
+            })}\n\n`);
+            res.end();
+            
+            logInfo('[Queue Download Stream] Download completed', { queueId: id });
+        });
+        
+        // Handle errors
+        downloadProcess.on('error', (error) => {
             queueItem.status = QueueStatus.FAILED;
             queueItem.error = error.message;
             queueItem.pid = null;
             saveQueueData();
             
-            logError('[Start Download API] Download failed', { 
-                queueId: id, 
-                error: error.message 
-            });
-        });
-        
-        logInfo('[Start Download API] Download started (async)', { 
-            queueId: id,
-            outputPath
-        });
-        
-        res.json({ 
-            success: true, 
-            message: 'Download started',
-            queueId: id
+            res.write(`data: ${JSON.stringify({ 
+                type: 'error', 
+                message: error.message 
+            })}\n\n`);
+            res.end();
+            
+            logError('[Queue Download Stream] Download error', { queueId: id, error: error.message });
         });
         
     } catch (error) {
-        logError('[Start Download API] Failed to start download', { error: error.message });
-        res.status(500).json({ 
-            success: false, 
-            error: 'Failed to start download' 
-        });
+        logError('[Queue Download Stream] Failed to start', { queueId: id, error: error.message });
+        res.write(`data: ${JSON.stringify({ type: 'error', message: error.message })}\n\n`);
+        res.end();
     }
 });
 

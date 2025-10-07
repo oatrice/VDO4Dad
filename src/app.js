@@ -27,20 +27,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Fetch video data from videos.json
-    fetch('./data/videos.json')
-        .then(response => response.json())
-        .then(data => {
-            videos = data;
-            if (videos.length > 0) {
-                renderVideoList();
-                playVideo(0);
-            }
-        })
-        .catch(error => {
-            console.error('Error fetching video data:', error);
-            videoListContainer.textContent = 'ไม่สามารถโหลดรายการวิดีโอได้';
-        });
+    // Function to load videos
+    function loadVideos() {
+        fetch('./data/videos.json')
+            .then(response => response.json())
+            .then(data => {
+                videos = data;
+                if (videos.length > 0) {
+                    renderVideoList();
+                    if (currentVideoIndex === 0 && !videoPlayer.src) {
+                        playVideo(0);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching video data:', error);
+                videoListContainer.textContent = 'ไม่สามารถโหลดรายการวิดีโอได้';
+            });
+    }
+
+    // Initial load
+    loadVideos();
+    
+    // Poll for new videos every 5 seconds (when queue is active)
+    setInterval(() => {
+        if (queueData.some(item => item.status === 'DOWNLOADING')) {
+            loadVideos();
+        }
+    }, 5000);
 
     // Function to render the list of videos
     function renderVideoList() {
@@ -201,9 +215,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="status-badge ${statusClass}">${statusText}</span>
                     ${item.progress > 0 ? `<span>${item.progress}%</span>` : ''}
                 </div>
-                ${item.progress > 0 ? `
+                ${item.progress > 0 || item.status === 'DOWNLOADING' ? `
                     <div class="queue-item-progress">
-                        <div class="queue-item-progress-bar" style="width: ${item.progress}%"></div>
+                        <div class="queue-progress-bar" style="width: ${item.progress}%">${item.progress}%</div>
                     </div>
                 ` : ''}
                 ${item.error ? `<div style="color: #721c24; font-size: 0.85rem;">❌ ${item.error}</div>` : ''}
@@ -366,35 +380,66 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Start download for a queue item
+    // Start download for a queue item with SSE progress
     async function startDownload(queueId) {
-        try {
-            logToServer('info', `[Start Download] Starting download for queue item`, { queueId });
+        return new Promise((resolve, reject) => {
+            logToServer('info', `[Start Download] Starting SSE stream for queue item`, { queueId });
             
-            const response = await fetch(`http://localhost:3000/api/queue/${queueId}/start`, {
-                method: 'POST'
-            });
-
-            const data = await response.json();
-
-            if (data.success) {
-                logToServer('info', `[Start Download] Download started successfully`, { 
-                    queueId, 
-                    pid: data.pid 
-                });
-                // Reload queue to show updated status
-                await loadQueue();
-            } else {
-                logToServer('error', `[Start Download] Failed to start download`, { 
-                    queueId, 
-                    error: data.error 
-                });
+            const eventSource = new EventSource(`http://localhost:3000/api/queue/${queueId}/download-stream`);
+            
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    
+                    switch (data.type) {
+                        case 'start':
+                            logToServer('info', `[Start Download] Download started`, { queueId });
+                            loadQueue(); // Reload to show DOWNLOADING status
+                            break;
+                            
+                        case 'progress':
+                            logToServer('info', `[Start Download] Progress ${data.percent}%`, { queueId, percent: data.percent });
+                            // Update queue item progress in UI
+                            updateQueueItemProgress(queueId, data.percent);
+                            break;
+                            
+                        case 'done':
+                            logToServer('info', `[Start Download] Download completed`, { queueId, title: data.title });
+                            eventSource.close();
+                            loadQueue(); // Reload to show COMPLETED status
+                            loadVideos(); // Reload video list to show new video
+                            resolve();
+                            break;
+                            
+                        case 'error':
+                            logToServer('error', `[Start Download] Download error`, { queueId, error: data.message });
+                            eventSource.close();
+                            loadQueue(); // Reload to show FAILED status
+                            reject(new Error(data.message));
+                            break;
+                    }
+                } catch (parseError) {
+                    logToServer('error', `[Start Download] Failed to parse SSE message`, { queueId, error: parseError.message });
+                }
+            };
+            
+            eventSource.onerror = (error) => {
+                logToServer('error', `[Start Download] SSE connection error`, { queueId });
+                eventSource.close();
+                reject(error);
+            };
+        });
+    }
+    
+    // Update queue item progress in UI
+    function updateQueueItemProgress(queueId, percent) {
+        const queueItem = document.querySelector(`[data-id="${queueId}"]`);
+        if (queueItem) {
+            const progressBar = queueItem.querySelector('.queue-progress-bar');
+            if (progressBar) {
+                progressBar.style.width = `${percent}%`;
+                progressBar.textContent = `${percent}%`;
             }
-        } catch (error) {
-            logToServer('error', `[Start Download] Error starting download`, { 
-                queueId, 
-                error: error.message 
-            });
         }
     }
 
