@@ -200,10 +200,20 @@ app.get('/download', async (req, res) => {
         logWarn('Failed to get yt-dlp version', { downloadId, error: error.message });
     }
     
-    // Check if cancelled before starting
+    // Check if cancelled after async operation
+    if (!activeDownloads.has(downloadId)) {
+        logInfo('Download was cancelled during initialization (not in map)', { downloadId });
+        res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: 'การดาวโหลดถูกยกเลิก' 
+        })}\n\n`);
+        res.end();
+        return;
+    }
+    
     const downloadInfo = activeDownloads.get(downloadId);
-    if (downloadInfo && downloadInfo.cancelled) {
-        logInfo('Download was cancelled before process started', { downloadId });
+    if (downloadInfo.cancelled) {
+        logInfo('Download was cancelled during initialization (flag set)', { downloadId });
         res.write(`data: ${JSON.stringify({ 
             type: 'error', 
             message: 'การดาวโหลดถูกยกเลิก' 
@@ -217,26 +227,6 @@ app.get('/download', async (req, res) => {
         url,
         ...options
     ]);
-
-    // Update with actual process and cleanup function
-    if (activeDownloads.has(downloadId)) {
-        const downloadInfo = activeDownloads.get(downloadId);
-        downloadInfo.process = downloadProcess;
-        downloadInfo.cleanup = cleanup; // Store cleanup function for cancellation
-    } else {
-        // Was deleted (cancelled) while exec was starting
-        logWarn('Download was cancelled during process creation', { downloadId });
-        if (downloadProcess && downloadProcess.ytDlpProcess) {
-            downloadProcess.ytDlpProcess.kill();
-        }
-        cleanup();
-        res.write(`data: ${JSON.stringify({ 
-            type: 'error', 
-            message: 'การดาวโหลดถูกยกเลิก' 
-        })}\n\n`);
-        res.end();
-        return;
-    }
 
     // Check if downloadProcess exists
     if (!downloadProcess) {
@@ -268,7 +258,9 @@ app.get('/download', async (req, res) => {
         return;
     }
 
-    // Store cleanup function for cancellation
+    // Declare cleanup function and timers/intervals BEFORE using them
+    let downloadTimeout, progressTimeout, processHealthInterval;
+    
     const cleanup = () => {
         clearTimeout(downloadTimeout);
         clearTimeout(progressTimeout);
@@ -276,8 +268,28 @@ app.get('/download', async (req, res) => {
         clearInterval(heartbeatInterval);
     };
 
+    // Update with actual process and cleanup function
+    if (activeDownloads.has(downloadId)) {
+        const downloadInfo = activeDownloads.get(downloadId);
+        downloadInfo.process = downloadProcess;
+        downloadInfo.cleanup = cleanup; // Store cleanup function for cancellation
+    } else {
+        // Was deleted (cancelled) while exec was starting
+        logWarn('Download was cancelled during process creation', { downloadId });
+        if (downloadProcess && downloadProcess.ytDlpProcess) {
+            downloadProcess.ytDlpProcess.kill();
+        }
+        cleanup();
+        res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: 'การดาวโหลดถูกยกเลิก' 
+        })}\n\n`);
+        res.end();
+        return;
+    }
+
     // Add timeout to prevent hanging
-    const downloadTimeout = setTimeout(() => {
+    downloadTimeout = setTimeout(() => {
         logError('Download timeout after 5 minutes', { downloadId });
         if (downloadProcess && downloadProcess.ytDlpProcess) {
             downloadProcess.ytDlpProcess.kill('SIGTERM');
@@ -297,7 +309,7 @@ app.get('/download', async (req, res) => {
     // Add progress monitoring to detect stuck downloads
     let lastProgressTime = Date.now();
     let lastProgressPercent = 0;
-    const progressTimeout = setTimeout(() => {
+    progressTimeout = setTimeout(() => {
         const timeSinceLastProgress = Date.now() - lastProgressTime;
         if (timeSinceLastProgress > 60000) { // 1 minute without progress
             logWarn('Download appears to be stuck', { 
@@ -309,7 +321,7 @@ app.get('/download', async (req, res) => {
     }, 30000); // Check every 30 seconds
 
     // Add process health monitoring
-    const processHealthInterval = setInterval(() => {
+    processHealthInterval = setInterval(() => {
         if (downloadProcess && downloadProcess.ytDlpProcess) {
             const isRunning = !downloadProcess.ytDlpProcess.killed && 
                              downloadProcess.ytDlpProcess.exitCode === null;
@@ -613,9 +625,9 @@ app.post('/downloads/:id/cancel', (req, res) => {
     
     if (activeDownloads.has(downloadId)) {
         const download = activeDownloads.get(downloadId);
-        logInfo('Cancelling download', { downloadId, url: download.url });
+        logInfo('Cancelling download', { downloadId, url: download.url, hasProcess: !!download.process });
         
-        // Set cancelled flag for early cancellation handling
+        // Set cancelled flag FIRST for early cancellation handling
         download.cancelled = true;
         
         // Clean up timers and intervals
@@ -624,7 +636,7 @@ app.post('/downloads/:id/cancel', (req, res) => {
             logInfo('Cleanup timers/intervals', { downloadId });
         }
         
-        // Kill the process
+        // Kill the process if it exists
         if (download.process && download.process.ytDlpProcess) {
             try {
                 download.process.ytDlpProcess.kill('SIGKILL'); // Use SIGKILL for immediate termination
@@ -632,12 +644,15 @@ app.post('/downloads/:id/cancel', (req, res) => {
             } catch (error) {
                 logError('Failed to kill process', { downloadId, error: error.message });
             }
+            // Delete from map after killing process
+            activeDownloads.delete(downloadId);
         } else {
-            logWarn('No process to kill yet (early cancellation)', { downloadId });
+            // No process yet - keep in map with cancelled flag so initialization can detect it
+            logWarn('No process to kill yet (early cancellation) - keeping in map with cancelled flag', { downloadId });
+            // Will be cleaned up when initialization detects the cancelled flag
         }
         
-        activeDownloads.delete(downloadId);
-        res.json({ message: 'Download cancelled', downloadId });
+        res.json({ message: 'Download cancelled', downloadId, hadProcess: !!download.process });
     } else {
         logWarn('Download not found for cancellation', { 
             requestedId: downloadId, 
