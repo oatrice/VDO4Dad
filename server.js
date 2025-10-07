@@ -802,6 +802,132 @@ app.get('/api/queue', (req, res) => {
     }
 });
 
+// Start download for a queue item
+app.post('/api/queue/:id/start', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        logInfo('[Start Download API] Received request to start download', { queueId: id });
+        
+        // Find queue item
+        const queueItem = queueData.find(item => item.id === id);
+        if (!queueItem) {
+            logWarn('[Start Download API] Queue item not found', { queueId: id });
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Queue item not found' 
+            });
+        }
+        
+        // Check if already downloading
+        if (queueItem.status === QueueStatus.DOWNLOADING) {
+            logWarn('[Start Download API] Item already downloading', { queueId: id });
+            return res.status(409).json({ 
+                success: false, 
+                error: 'Item is already downloading' 
+            });
+        }
+        
+        // Update status to DOWNLOADING
+        queueItem.status = QueueStatus.DOWNLOADING;
+        queueItem.startedAt = new Date().toISOString();
+        queueItem.progress = 0;
+        saveQueueData();
+        
+        logInfo('[Start Download API] Starting yt-dlp process', { 
+            queueId: id, 
+            url: queueItem.url,
+            title: queueItem.title
+        });
+        
+        // Start download process
+        const outputPath = path.join(__dirname, 'src', 'videos', `${queueItem.id}.mp4`);
+        
+        const ytDlpProcess = ytDlpWrap.exec([
+            queueItem.url,
+            '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            '-o', outputPath,
+            '--newline',
+            '--no-playlist'
+        ]);
+        
+        queueItem.pid = ytDlpProcess.pid;
+        saveQueueData();
+        
+        logInfo('[Start Download API] yt-dlp process started', { 
+            queueId: id, 
+            pid: ytDlpProcess.pid 
+        });
+        
+        // Handle download progress
+        ytDlpProcess.stdout.on('data', (data) => {
+            const output = data.toString();
+            const progressMatch = output.match(/(\d+\.\d+)%/);
+            if (progressMatch) {
+                queueItem.progress = Math.round(parseFloat(progressMatch[1]));
+                saveQueueData();
+                logInfo('[Start Download API] Progress update', { 
+                    queueId: id, 
+                    progress: queueItem.progress 
+                });
+            }
+        });
+        
+        // Handle completion
+        ytDlpProcess.on('close', (code) => {
+            if (code === 0) {
+                queueItem.status = QueueStatus.COMPLETED;
+                queueItem.progress = 100;
+                queueItem.completedAt = new Date().toISOString();
+                queueItem.filePath = outputPath;
+                queueItem.pid = null;
+                saveQueueData();
+                
+                logInfo('[Start Download API] Download completed successfully', { 
+                    queueId: id, 
+                    filePath: outputPath 
+                });
+            } else {
+                queueItem.status = QueueStatus.FAILED;
+                queueItem.error = `Download failed with code ${code}`;
+                queueItem.pid = null;
+                saveQueueData();
+                
+                logError('[Start Download API] Download failed', { 
+                    queueId: id, 
+                    exitCode: code 
+                });
+            }
+        });
+        
+        ytDlpProcess.on('error', (error) => {
+            queueItem.status = QueueStatus.FAILED;
+            queueItem.error = error.message;
+            queueItem.pid = null;
+            saveQueueData();
+            
+            logError('[Start Download API] Download process error', { 
+                queueId: id, 
+                error: error.message 
+            });
+        });
+        
+        res.json({ 
+            success: true, 
+            message: 'Download started',
+            queueId: id,
+            pid: ytDlpProcess.pid
+        });
+        
+    } catch (error) {
+        logError('[Start Download API] Failed to start download', { error: error.message });
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to start download' 
+        });
+    }
+});
+
 // Clear all queue items
 app.delete('/api/queue', (req, res) => {
     try {

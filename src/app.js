@@ -340,12 +340,61 @@ document.addEventListener('DOMContentLoaded', () => {
         addToQueueBtn.disabled = false;
         addToQueueBtn.classList.remove('loading');
 
-        // Start downloading queued items immediately
+        // Start downloading only the FIRST item (one at a time)
         if (queuedItems.length > 0) {
-            alert(`✅ เพิ่มเข้าคิวและเริ่มดาวน์โหลด ${successCount} รายการ!`);
-            // TODO: Phase 2 - Start download from queue
+            logToServer('info', `[Add to Queue] Will start downloading FIRST item only`, { 
+                firstItem: { id: queuedItems[0].id, title: queuedItems[0].title },
+                totalInQueue: queuedItems.length
+            });
+            
+            alert(`✅ เพิ่มเข้าคิว ${successCount} รายการ! กำลังเริ่มดาวน์โหลดคลิปแรก...`);
+            
+            // Start downloading only the first item
+            const firstItem = queuedItems[0];
+            logToServer('info', `[Add to Queue] Starting download for first item`, { 
+                id: firstItem.id, 
+                title: firstItem.title 
+            });
+            await startDownload(firstItem.id);
+            
+            logToServer('info', `[Add to Queue] First download started. Remaining items will be downloaded manually.`, { 
+                started: 1,
+                remaining: queuedItems.length - 1
+            });
         } else if (failedUrls.length > 0) {
             alert(`❌ ล้มเหลว ${failedUrls.length} รายการ\n\nURL ที่ล้มเหลวยังคงอยู่ในช่องกรอก`);
+        }
+    }
+
+    // Start download for a queue item
+    async function startDownload(queueId) {
+        try {
+            logToServer('info', `[Start Download] Starting download for queue item`, { queueId });
+            
+            const response = await fetch(`http://localhost:3000/api/queue/${queueId}/start`, {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                logToServer('info', `[Start Download] Download started successfully`, { 
+                    queueId, 
+                    pid: data.pid 
+                });
+                // Reload queue to show updated status
+                await loadQueue();
+            } else {
+                logToServer('error', `[Start Download] Failed to start download`, { 
+                    queueId, 
+                    error: data.error 
+                });
+            }
+        } catch (error) {
+            logToServer('error', `[Start Download] Error starting download`, { 
+                queueId, 
+                error: error.message 
+            });
         }
     }
 
