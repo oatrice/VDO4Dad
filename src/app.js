@@ -55,7 +55,24 @@ document.addEventListener('DOMContentLoaded', () => {
         videos.forEach((video, index) => {
             const videoItem = document.createElement('div');
             videoItem.classList.add('video-list-item');
-            videoItem.textContent = video.title;
+            
+            // Create thumbnail image
+            const thumbnail = document.createElement('img');
+            thumbnail.classList.add('video-list-thumbnail');
+            thumbnail.src = video.thumbnail || 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="120" height="90"%3E%3Crect fill="%23dee2e6" width="120" height="90"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%236c757d" font-family="sans-serif" font-size="14"%3ENo Image%3C/text%3E%3C/svg%3E';
+            thumbnail.alt = video.title;
+            thumbnail.onerror = function() {
+                this.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="120" height="90"%3E%3Crect fill="%23dee2e6" width="120" height="90"/%3E%3Ctext x="50%25" y="50%25" text-anchor="middle" dy=".3em" fill="%236c757d" font-family="sans-serif" font-size="14"%3ENo Image%3C/text%3E%3C/svg%3E';
+            };
+            
+            // Create title element
+            const titleElement = document.createElement('div');
+            titleElement.classList.add('video-list-title');
+            titleElement.textContent = video.title;
+            
+            videoItem.appendChild(thumbnail);
+            videoItem.appendChild(titleElement);
+            
             videoItem.addEventListener('click', () => {
                 playVideo(index);
             });

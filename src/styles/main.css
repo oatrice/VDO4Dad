@@ -186,17 +186,14 @@ h1 {
 }
 
 .video-list-item {
-    padding: 12px;
+    padding: 8px;
     border-radius: 6px;
     cursor: pointer;
     transition: background-color 0.2s ease;
-    display: -webkit-box; /* 2-line clamp */
-    -webkit-line-clamp: 2;
-    line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden; /* required for multi-line clamp */
-    text-overflow: ellipsis; /* show ellipsis for clamped text */
-    overflow-wrap: anywhere; /* allow break for long words */
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 8px;
 }
 
 .video-list-item:hover {
@@ -205,15 +202,32 @@ h1 {
 
 .video-list-item.active {
     background-color: #e7f3ff;
-    font-weight: bold;
-    color: #1877f2;
-    display: -webkit-box; /* 2-line clamp */
+}
+
+.video-list-thumbnail {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
+    border-radius: 4px;
+    background-color: #dee2e6;
+}
+
+.video-list-title {
+    font-size: 0.9rem;
+    line-height: 1.3;
+    display: -webkit-box;
     -webkit-line-clamp: 2;
     line-clamp: 2;
     -webkit-box-orient: vertical;
-    overflow: hidden; /* required for multi-line clamp */
-    text-overflow: ellipsis; /* show ellipsis for clamped text */
-    overflow-wrap: anywhere; /* allow break for long words */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    overflow-wrap: anywhere;
+}
+
+.video-list-item.active .video-list-title {
+    font-weight: bold;
+    color: #1877f2;
 }
 
 /* === Controls & Buttons === */
