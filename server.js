@@ -5,6 +5,9 @@ const fs = require('fs');
 const YTDlpWrap = require('yt-dlp-wrap').default;
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 
+// Queue data file path
+const QUEUE_DATA_FILE = path.join(__dirname, 'queue_data.json');
+
 // Logging system
 const logDir = path.join(__dirname, 'logs');
 if (!fs.existsSync(logDir)) {
@@ -79,6 +82,76 @@ const activeDownloads = new Map();
 
 // Store pending cancellations (cancel requests that arrived before download started)
 const pendingCancellations = new Set();
+
+// Queue storage - stores all queue items with their status
+let queueData = [];
+
+// Queue item statuses
+const QueueStatus = {
+    PENDING: 'PENDING',
+    DOWNLOADING: 'DOWNLOADING',
+    PAUSED: 'PAUSED',
+    FAILED: 'FAILED',
+    COMPLETED: 'COMPLETED'
+};
+
+// Function to load queue data from file
+function loadQueueData() {
+    try {
+        if (fs.existsSync(QUEUE_DATA_FILE)) {
+            const data = fs.readFileSync(QUEUE_DATA_FILE, 'utf8');
+            queueData = JSON.parse(data);
+            logInfo('Queue data loaded from file', { itemCount: queueData.length });
+            return queueData;
+        } else {
+            logInfo('No existing queue data file found, starting with empty queue');
+            queueData = [];
+            return queueData;
+        }
+    } catch (error) {
+        logError('Failed to load queue data', { error: error.message });
+        queueData = [];
+        return queueData;
+    }
+}
+
+// Function to save queue data to file
+function saveQueueData() {
+    try {
+        fs.writeFileSync(QUEUE_DATA_FILE, JSON.stringify(queueData, null, 2), 'utf8');
+        logInfo('Queue data saved to file', { itemCount: queueData.length });
+    } catch (error) {
+        logError('Failed to save queue data', { error: error.message });
+    }
+}
+
+// Function to recover queue on server start
+function recoverQueue() {
+    logInfo('Starting queue recovery process');
+    
+    let recoveredCount = 0;
+    queueData.forEach(item => {
+        // Reset DOWNLOADING and PAUSED items to PENDING
+        if (item.status === QueueStatus.DOWNLOADING || item.status === QueueStatus.PAUSED) {
+            item.status = QueueStatus.PENDING;
+            item.pid = null; // Clear process ID
+            item.progress = 0; // Reset progress
+            recoveredCount++;
+            logInfo('Recovered queue item', { 
+                id: item.id, 
+                url: item.url, 
+                previousStatus: item.status 
+            });
+        }
+    });
+    
+    if (recoveredCount > 0) {
+        saveQueueData();
+        logInfo('Queue recovery completed', { recoveredCount });
+    } else {
+        logInfo('No items needed recovery');
+    }
+}
 
 // Function to update videos.json with new video
 function updateVideosJson(videoInfo) {
@@ -711,18 +784,42 @@ app.get('/health', (req, res) => {
     res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Get queue endpoint - returns all queue items
+app.get('/api/queue', (req, res) => {
+    try {
+        logInfo('Queue data requested', { itemCount: queueData.length });
+        res.json({ 
+            success: true, 
+            queue: queueData,
+            count: queueData.length
+        });
+    } catch (error) {
+        logError('Failed to retrieve queue data', { error: error.message });
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to retrieve queue data' 
+        });
+    }
+});
+
+// Initialize queue data on server start
+loadQueueData();
+recoverQueue();
+
 // Start server
 app.listen(PORT, () => {
     logInfo('Backend server started', { 
         port: PORT, 
         staticPath: path.join(__dirname, 'src'),
         videosPath: path.join(__dirname, 'src', 'videos'),
+        queueDataFile: QUEUE_DATA_FILE,
         serverLogFile: logFile,
         frontendLogFile: path.join(__dirname, 'logs', 'frontend.log')
     });
     console.log(`🚀 Backend server running on http://localhost:${PORT}`);
     console.log(`📁 Serving static files from: ${path.join(__dirname, 'src')}`);
     console.log(`🎥 Video downloads will be saved to: ${path.join(__dirname, 'src', 'videos')}`);
+    console.log(`💾 Queue data will be saved to: ${QUEUE_DATA_FILE}`);
     console.log(`📝 Server logs will be saved to: ${logFile}`);
     console.log(`📝 Frontend logs will be saved to: ${path.join(__dirname, 'logs', 'frontend.log')}`);
 });
