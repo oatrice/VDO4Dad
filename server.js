@@ -125,6 +125,147 @@ function saveQueueData() {
     }
 }
 
+// Function to automatically start next pending item in queue
+function startNextQueueItem() {
+    try {
+        // Find the next pending item
+        const nextItem = queueData.find(item => item.status === QueueStatus.PENDING);
+        
+        if (nextItem) {
+            logInfo('[Auto Queue] Starting next pending item', { 
+                id: nextItem.id, 
+                title: nextItem.title,
+                url: nextItem.url
+            });
+            
+            // Start download by making internal request to download stream endpoint
+            // We'll use a simple approach - just update status and let the frontend poll
+            nextItem.status = QueueStatus.DOWNLOADING;
+            nextItem.startedAt = new Date().toISOString();
+            nextItem.pid = 'auto-started';
+            saveQueueData();
+            
+            // Start the actual download process
+            startQueueItemDownload(nextItem);
+            
+        } else {
+            logInfo('[Auto Queue] No more pending items in queue');
+        }
+    } catch (error) {
+        logError('[Auto Queue] Error starting next item', { error: error.message });
+    }
+}
+
+// Function to start download for a specific queue item
+async function startQueueItemDownload(queueItem) {
+    try {
+        logInfo('[Auto Queue Download] Starting download', { 
+            id: queueItem.id, 
+            title: queueItem.title 
+        });
+        
+        const videosDir = path.join(__dirname, 'src', 'videos');
+        if (!fs.existsSync(videosDir)) {
+            fs.mkdirSync(videosDir, { recursive: true });
+        }
+        
+        // Sanitize filename
+        const sanitizedTitle = queueItem.title
+            .replace(/\|/g, '｜')
+            .replace(/[<>:"/\\?*]/g, '');
+        
+        const outputPath = path.join(videosDir, `${queueItem.id}.%(ext)s`);
+        
+        const options = [
+            '--output', outputPath,
+            '--format', 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]',
+            '--no-playlist',
+            '--write-thumbnail',
+            '--merge-output-format', 'mp4',
+            '--ffmpeg-location', ffmpegPath,
+            '--no-warnings',
+            '--retries', '10',
+            '--fragment-retries', '10',
+            '--retry-sleep', '1'
+        ];
+        
+        const downloadProcess = ytDlpWrap.exec([queueItem.url, ...options]);
+        
+        // Handle progress
+        downloadProcess.on('progress', (progress) => {
+            queueItem.progress = Math.round(progress.percent || 0);
+            saveQueueData();
+        });
+        
+        // Handle completion
+        downloadProcess.on('close', (code) => {
+            if (code === 0) {
+                queueItem.status = QueueStatus.COMPLETED;
+                queueItem.progress = 100;
+                queueItem.completedAt = new Date().toISOString();
+                queueItem.filePath = `videos/${queueItem.id}.mp4`;
+                queueItem.pid = null;
+                saveQueueData();
+                
+                // Add to videos.json
+                addToVideosJson(queueItem);
+                
+                logInfo('[Auto Queue Download] Download completed successfully', { 
+                    id: queueItem.id, 
+                    title: queueItem.title 
+                });
+                
+                // Start next item
+                startNextQueueItem();
+                
+            } else {
+                queueItem.status = QueueStatus.FAILED;
+                queueItem.error = `Download failed with exit code: ${code}`;
+                queueItem.pid = null;
+                saveQueueData();
+                
+                logError('[Auto Queue Download] Download failed', { 
+                    id: queueItem.id, 
+                    exitCode: code 
+                });
+                
+                // Still try to start next item even if this one failed
+                startNextQueueItem();
+            }
+        });
+        
+        // Handle errors
+        downloadProcess.on('error', (error) => {
+            queueItem.status = QueueStatus.FAILED;
+            queueItem.error = error.message;
+            queueItem.pid = null;
+            saveQueueData();
+            
+            logError('[Auto Queue Download] Download error', { 
+                id: queueItem.id, 
+                error: error.message 
+            });
+            
+            // Still try to start next item even if this one failed
+            startNextQueueItem();
+        });
+        
+    } catch (error) {
+        queueItem.status = QueueStatus.FAILED;
+        queueItem.error = error.message;
+        queueItem.pid = null;
+        saveQueueData();
+        
+        logError('[Auto Queue Download] Failed to start download', { 
+            id: queueItem.id, 
+            error: error.message 
+        });
+        
+        // Still try to start next item
+        startNextQueueItem();
+    }
+}
+
 // Function to add completed download to videos.json
 function addToVideosJson(queueItem) {
     try {
@@ -963,6 +1104,9 @@ app.get('/api/queue/:id/download-stream', async (req, res) => {
             res.end();
             
             logInfo('[Queue Download Stream] Download completed', { queueId: id });
+            
+            // Auto-start next pending item in queue
+            startNextQueueItem();
         });
         
         // Handle errors
@@ -979,6 +1123,9 @@ app.get('/api/queue/:id/download-stream', async (req, res) => {
             res.end();
             
             logError('[Queue Download Stream] Download error', { queueId: id, error: error.message });
+            
+            // Auto-start next pending item even if this one failed
+            startNextQueueItem();
         });
         
     } catch (error) {
