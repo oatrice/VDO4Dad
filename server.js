@@ -843,80 +843,49 @@ app.post('/api/queue/:id/start', async (req, res) => {
         // Start download process
         const outputPath = path.join(__dirname, 'src', 'videos', `${queueItem.id}.mp4`);
         
-        const ytDlpProcess = ytDlpWrap.exec([
+        // Use execPromise for better async handling
+        ytDlpWrap.execPromise([
             queueItem.url,
             '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             '-o', outputPath,
             '--newline',
-            '--no-playlist'
-        ]);
-        
-        queueItem.pid = ytDlpProcess.pid;
-        saveQueueData();
-        
-        logInfo('[Start Download API] yt-dlp process started', { 
-            queueId: id, 
-            pid: ytDlpProcess.pid 
-        });
-        
-        // Handle download progress
-        ytDlpProcess.stdout.on('data', (data) => {
-            const output = data.toString();
-            const progressMatch = output.match(/(\d+\.\d+)%/);
-            if (progressMatch) {
-                queueItem.progress = Math.round(parseFloat(progressMatch[1]));
-                saveQueueData();
-                logInfo('[Start Download API] Progress update', { 
-                    queueId: id, 
-                    progress: queueItem.progress 
-                });
-            }
-        });
-        
-        // Handle completion
-        ytDlpProcess.on('close', (code) => {
-            if (code === 0) {
-                queueItem.status = QueueStatus.COMPLETED;
-                queueItem.progress = 100;
-                queueItem.completedAt = new Date().toISOString();
-                queueItem.filePath = outputPath;
-                queueItem.pid = null;
-                saveQueueData();
-                
-                logInfo('[Start Download API] Download completed successfully', { 
-                    queueId: id, 
-                    filePath: outputPath 
-                });
-            } else {
-                queueItem.status = QueueStatus.FAILED;
-                queueItem.error = `Download failed with code ${code}`;
-                queueItem.pid = null;
-                saveQueueData();
-                
-                logError('[Start Download API] Download failed', { 
-                    queueId: id, 
-                    exitCode: code 
-                });
-            }
-        });
-        
-        ytDlpProcess.on('error', (error) => {
+            '--no-playlist',
+            '--progress'
+        ]).then(() => {
+            // Download completed successfully
+            queueItem.status = QueueStatus.COMPLETED;
+            queueItem.progress = 100;
+            queueItem.completedAt = new Date().toISOString();
+            queueItem.filePath = outputPath;
+            queueItem.pid = null;
+            saveQueueData();
+            
+            logInfo('[Start Download API] Download completed successfully', { 
+                queueId: id, 
+                filePath: outputPath 
+            });
+        }).catch((error) => {
+            // Download failed
             queueItem.status = QueueStatus.FAILED;
             queueItem.error = error.message;
             queueItem.pid = null;
             saveQueueData();
             
-            logError('[Start Download API] Download process error', { 
+            logError('[Start Download API] Download failed', { 
                 queueId: id, 
                 error: error.message 
             });
         });
         
+        logInfo('[Start Download API] Download started (async)', { 
+            queueId: id,
+            outputPath
+        });
+        
         res.json({ 
             success: true, 
             message: 'Download started',
-            queueId: id,
-            pid: ytDlpProcess.pid
+            queueId: id
         });
         
     } catch (error) {
