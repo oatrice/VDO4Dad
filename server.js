@@ -204,12 +204,6 @@ app.get('/download', async (req, res) => {
         startTime: Date.now()
     });
 
-    logInfo('activeDownloads updated', { 
-        downloadId, 
-        totalActive: activeDownloads.size,
-        activeIds: Array.from(activeDownloads.keys())
-    });
-
     // Check if downloadProcess exists
     if (!downloadProcess) {
         logError('Failed to create download process', { downloadId, url });
