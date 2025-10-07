@@ -150,11 +150,14 @@ function addToVideosJson(queueItem) {
         // Check if already exists
         const existingIndex = videos.findIndex(v => v.id === queueItem.id);
         if (existingIndex >= 0) {
-            videos[existingIndex] = videoEntry;
-            logInfo('Updated existing video in videos.json', { id: queueItem.id });
+            // Remove old entry and add to top
+            videos.splice(existingIndex, 1);
+            videos.unshift(videoEntry);
+            logInfo('Updated and moved video to top of videos.json', { id: queueItem.id });
         } else {
-            videos.push(videoEntry);
-            logInfo('Added new video to videos.json', { id: queueItem.id, title: queueItem.title });
+            // Add new video to the top (index 0)
+            videos.unshift(videoEntry);
+            logInfo('Added new video to top of videos.json', { id: queueItem.id, title: queueItem.title });
         }
         
         // Save videos.json
