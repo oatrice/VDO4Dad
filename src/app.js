@@ -460,8 +460,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 totalInQueue: queuedItems.length
             });
             
-            alert(`✅ เพิ่มเข้าคิว ${successCount} รายการ! กำลังเริ่มดาวน์โหลดคลิปแรก...`);
-            
             // Start downloading only the first item
             const firstItem = queuedItems[0];
             logToServer('info', `[Add to Queue] Starting download for first item`, { 
