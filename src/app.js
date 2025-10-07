@@ -174,11 +174,13 @@ document.addEventListener('DOMContentLoaded', () => {
         return new Promise((resolve, reject) => {
             const MAX_RETRIES = 5;
             let retryCount = 0;
+            let timeoutId;
 
             const fileName = url.length > 50 ? url.substring(0, 50) + '...' : url;
             const statusElement = createStatusElement(fileName);
             const progressBar = statusElement.querySelector('.progress-bar');
             const statusText = statusElement.querySelector('span');
+            const cancelBtn = statusElement.querySelector('.cancel-btn');
 
             // Generate a unique download ID for this session
             const downloadId = `frontend-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -186,12 +188,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
             logToServer('info', `[Session Start] Download session started for URL: ${url}`, { downloadId });
 
+            let eventSource;
+
+            cancelBtn.addEventListener('click', () => {
+                if (timeoutId) {
+                    clearTimeout(timeoutId);
+                }
+                if (eventSource) {
+                    eventSource.close();
+                }
+
+                // Also call the cancel endpoint on the server
+                const backendDownloadId = `backend-${downloadId}`;
+                fetch(`http://localhost:3000/downloads/${backendDownloadId}/cancel`, {
+                    method: 'POST'
+                })
+                .then(response => response.json())
+                .then(data => logToServer('info', 'Sent cancel request to server.', data))
+                .catch(err => console.error('Failed to send cancel request to server:', err));
+
+                logToServer('warn', `[Cancelled] Download cancelled by user for URL: ${url}`, { downloadId });
+                statusElement.className = 'download-status-item error';
+                statusElement.innerHTML = `❌ ยกเลิกการดาวน์โหลด '${fileName}'`;
+                activeDownloads.delete(downloadId);
+                if (onCompleteCallback) onCompleteCallback();
+                reject(new Error('Download cancelled by user'));
+            });
+
             function attemptDownload() {
                 if (retryCount > 0) {
                     statusText.textContent = `[ลองใหม่ครั้งที่ ${retryCount}/${MAX_RETRIES}] ${fileName}`;
                 }
 
-                const eventSource = new EventSource(`http://localhost:3000/download?url=${encodeURIComponent(url)}&downloadId=${downloadId}`);
+                eventSource = new EventSource(`http://localhost:3000/download?url=${encodeURIComponent(url)}&downloadId=${downloadId}`);
 
                 const handleFailure = (errorMessage) => {
                     eventSource.close();
@@ -200,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         logToServer('warn', `[EventSource] [${downloadId}] Download failed for ${url}. Retrying... (${retryCount}/${MAX_RETRIES})`, { error: errorMessage });
                         const retryDelay = Math.pow(2, retryCount) * 1000; // Exponential backoff
                         statusText.textContent = `[ล้มเหลว] ${fileName} - จะลองใหม่ใน ${retryDelay / 1000} วินาที...`;
-                        setTimeout(attemptDownload, retryDelay);
+                        timeoutId = setTimeout(attemptDownload, retryDelay);
                     } else {
                         logToServer('error', `[EventSource] [${downloadId}] Download failed for ${url} after ${MAX_RETRIES} retries.`, { error: errorMessage });
                         statusElement.className = 'download-status-item error';
@@ -276,6 +305,7 @@ document.addEventListener('DOMContentLoaded', () => {
         statusElement.innerHTML = `
             <span>กำลังดาวน์โหลด: ${fileName}</span>
             <div class="progress-bar-container"><div class="progress-bar">0%</div></div>
+            <button class="cancel-btn button">ยกเลิก</button>
         `;
         downloadStatusContainer.appendChild(statusElement);
         return statusElement;

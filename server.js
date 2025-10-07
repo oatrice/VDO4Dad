@@ -204,6 +204,12 @@ app.get('/download', async (req, res) => {
         startTime: Date.now()
     });
 
+    logInfo('activeDownloads updated', { 
+        downloadId, 
+        totalActive: activeDownloads.size,
+        activeIds: Array.from(activeDownloads.keys())
+    });
+
     // Check if downloadProcess exists
     if (!downloadProcess) {
         logError('Failed to create download process', { downloadId, url });
@@ -565,16 +571,38 @@ app.get('/downloads/status', (req, res) => {
 // Cancel download endpoint
 app.post('/downloads/:id/cancel', (req, res) => {
     const downloadId = req.params.id;
+    const activeIds = Array.from(activeDownloads.keys());
+    
+    logInfo('Received cancel request', { 
+        requestedId: downloadId,
+        totalActive: activeDownloads.size,
+        activeIds: activeIds,
+        hasMatch: activeDownloads.has(downloadId)
+    });
     
     if (activeDownloads.has(downloadId)) {
         const download = activeDownloads.get(downloadId);
-        if (download.process) {
+        logInfo('Cancelling download', { downloadId, url: download.url });
+        
+        if (download.process && download.process.ytDlpProcess) {
             download.process.ytDlpProcess.kill();
+            logInfo('Process killed', { downloadId });
+        } else {
+            logWarn('No process to kill', { downloadId });
         }
+        
         activeDownloads.delete(downloadId);
-        res.json({ message: 'Download cancelled' });
+        res.json({ message: 'Download cancelled', downloadId });
     } else {
-        res.status(404).json({ error: 'Download not found' });
+        logWarn('Download not found for cancellation', { 
+            requestedId: downloadId, 
+            availableIds: activeIds 
+        });
+        res.status(404).json({ 
+            error: 'Download not found',
+            requestedId: downloadId,
+            activeDownloads: activeIds
+        });
     }
 });
 
