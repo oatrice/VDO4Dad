@@ -6,7 +6,7 @@ const YTDlpWrap = require('yt-dlp-wrap').default;
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 
 // Queue data file path
-const QUEUE_DATA_FILE = path.join(__dirname, 'queue_data.json');
+const QUEUE_DATA_FILE = path.join(__dirname, 'src', 'data', 'queue_data.json');
 
 // Logging system
 const logDir = path.join(__dirname, 'logs');

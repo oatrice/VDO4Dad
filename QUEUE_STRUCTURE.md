@@ -4,7 +4,7 @@
 ระบบ Download Queue Manager ใช้ไฟล์ `queue_data.json` เป็นฐานข้อมูลหลักในการเก็บข้อมูลคิวการดาวน์โหลดทั้งหมด
 
 ## File Location
-- **Queue Data**: `/queue_data.json` (root directory)
+- **Queue Data**: `/src/data/queue_data.json`
 - **Videos**: `/src/videos/` (downloaded video files)
 
 ## Queue Item Structure
