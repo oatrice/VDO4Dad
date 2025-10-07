@@ -830,7 +830,11 @@ app.post('/api/queue', async (req, res) => {
     try {
         const { url } = req.body;
         
+        // Log incoming request
+        logInfo('[Add to Queue API] Received request to add URL', { url });
+        
         if (!url) {
+            logWarn('[Add to Queue API] Missing URL in request');
             return res.status(400).json({ 
                 success: false, 
                 error: 'URL is required' 
@@ -840,7 +844,7 @@ app.post('/api/queue', async (req, res) => {
         // Check if URL already exists in queue
         const existingItem = queueData.find(item => item.url === url);
         if (existingItem) {
-            logWarn('URL already exists in queue', { url, existingId: existingItem.id });
+            logWarn('[Add to Queue API] URL already exists in queue', { url, existingId: existingItem.id });
             return res.status(409).json({ 
                 success: false, 
                 error: 'URL already exists in queue',
@@ -849,12 +853,18 @@ app.post('/api/queue', async (req, res) => {
         }
         
         // Fetch video metadata
+        logInfo('[Add to Queue API] Fetching video metadata', { url });
         let videoInfo;
         try {
             videoInfo = await ytDlpWrap.getVideoInfo(url);
-            logInfo('Fetched video metadata for queue', { title: videoInfo.title, url });
+            logInfo('[Add to Queue API] Successfully fetched video metadata', { 
+                title: videoInfo.title, 
+                url,
+                duration: videoInfo.duration,
+                uploader: videoInfo.uploader
+            });
         } catch (error) {
-            logError('Failed to fetch video metadata', { error: error.message, url });
+            logError('[Add to Queue API] Failed to fetch video metadata', { error: error.message, url });
             return res.status(400).json({ 
                 success: false, 
                 error: 'ไม่สามารถดึงข้อมูลวิดีโอได้ กรุณาตรวจสอบ URL' 
@@ -883,7 +893,13 @@ app.post('/api/queue', async (req, res) => {
         // Save to file
         saveQueueData();
         
-        logInfo('Added new item to queue', { id: queueItem.id, title: queueItem.title, url });
+        logInfo('[Add to Queue API] Successfully added item to queue', { 
+            id: queueItem.id, 
+            title: queueItem.title, 
+            url,
+            queuePosition: queueData.length,
+            totalQueueSize: queueData.length
+        });
         
         res.json({ 
             success: true, 

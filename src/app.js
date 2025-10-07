@@ -258,9 +258,19 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // Log URLs being added
+        logToServer('info', `[Add to Queue] User clicked add button with ${urls.length} URLs`, { 
+            urls: urls,
+            urlCount: urls.length 
+        });
+
         // Validate all URLs
         const invalidUrls = urls.filter(url => !url.startsWith('http://') && !url.startsWith('https://'));
         if (invalidUrls.length > 0) {
+            logToServer('warn', `[Add to Queue] Invalid URLs detected`, { 
+                invalidUrls: invalidUrls,
+                invalidCount: invalidUrls.length 
+            });
             alert(`URL ต้องขึ้นต้นด้วย http:// หรือ https://\nURL ที่ไม่ถูกต้อง: ${invalidUrls[0]}`);
             return;
         }
@@ -275,7 +285,12 @@ document.addEventListener('DOMContentLoaded', () => {
         let queuedItems = []; // Store successfully queued items
 
         // Add each URL to queue first
-        for (const url of urls) {
+        logToServer('info', `[Add to Queue] Starting to process ${urls.length} URLs`, { urls });
+        
+        for (let i = 0; i < urls.length; i++) {
+            const url = urls[i];
+            logToServer('info', `[Add to Queue] Processing URL ${i + 1}/${urls.length}`, { url, index: i });
+            
             try {
                 const response = await fetch('http://localhost:3000/api/queue', {
                     method: 'POST',
@@ -290,16 +305,35 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (data.success) {
                     successCount++;
                     queuedItems.push(data.item);
-                    logToServer('info', 'Added to queue successfully', { url, id: data.item.id });
+                    logToServer('info', `[Add to Queue] Successfully added URL ${i + 1}/${urls.length}`, { 
+                        url, 
+                        id: data.item.id,
+                        successCount 
+                    });
                 } else {
                     failedUrls.push({ url, error: data.error });
-                    logToServer('error', 'Failed to add to queue', { url, error: data.error });
+                    logToServer('error', `[Add to Queue] Failed to add URL ${i + 1}/${urls.length}`, { 
+                        url, 
+                        error: data.error,
+                        statusCode: response.status
+                    });
                 }
             } catch (error) {
                 failedUrls.push({ url, error: error.message });
-                logToServer('error', 'Error adding to queue', { url, error: error.message });
+                logToServer('error', `[Add to Queue] Exception while adding URL ${i + 1}/${urls.length}`, { 
+                    url, 
+                    error: error.message,
+                    stack: error.stack
+                });
             }
         }
+        
+        logToServer('info', `[Add to Queue] Finished processing all URLs`, { 
+            total: urls.length,
+            success: successCount,
+            failed: failedUrls.length,
+            failedUrls: failedUrls.map(f => f.url)
+        });
 
         // Hide loading and reload queue
         hideLoadingState();
