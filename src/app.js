@@ -304,8 +304,10 @@ document.addEventListener('DOMContentLoaded', () => {
         statusElement.className = 'download-status-item';
         statusElement.innerHTML = `
             <span>กำลังดาวน์โหลด: ${fileName}</span>
-            <div class="progress-bar-container"><div class="progress-bar">0%</div></div>
-            <button class="cancel-btn button">ยกเลิก</button>
+            <div class="progress-section">
+                <div class="progress-bar-container"><div class="progress-bar">0%</div></div>
+                <button class="cancel-btn button">ยกเลิก</button>
+            </div>
         `;
         downloadStatusContainer.appendChild(statusElement);
         return statusElement;

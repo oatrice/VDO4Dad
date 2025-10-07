@@ -62,6 +62,12 @@ h1 {
     gap: 8px;
 }
 
+.download-status-item .progress-section {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .download-status-item span {
     font-size: 0.9rem;
     color: #495057;
@@ -69,11 +75,11 @@ h1 {
 }
 
 .progress-bar-container {
-    width: 100%;
+    flex: 1;
     background-color: #e0e0e0;
     border-radius: 4px;
     overflow: hidden;
-    height: 24px;
+    height: 32px;
     position: relative;
 }
 
@@ -82,7 +88,7 @@ h1 {
     height: 100%;
     background: linear-gradient(90deg, #4caf50, #45a049);
     text-align: center;
-    line-height: 24px;
+    line-height: 32px;
     color: white;
     font-size: 0.8rem;
     font-weight: bold;
@@ -226,6 +232,17 @@ h1 {
     font-size: 1rem;
     cursor: pointer;
     transition: background-color 0.2s ease;
+}
+
+.cancel-btn {
+    padding: 6px 16px;
+    font-size: 0.85rem;
+    background-color: #dc3545;
+    flex-shrink: 0;
+}
+
+.cancel-btn:hover {
+    background-color: #c82333;
 }
 
 .button:hover {
