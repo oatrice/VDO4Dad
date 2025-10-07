@@ -77,6 +77,9 @@ if (!ytDlpWrap) {
 // Store active downloads
 const activeDownloads = new Map();
 
+// Store pending cancellations (cancel requests that arrived before download started)
+const pendingCancellations = new Set();
+
 // Function to update videos.json with new video
 function updateVideosJson(videoInfo) {
     const videosPath = path.join(__dirname, 'src', 'data', 'videos.json');
@@ -183,6 +186,18 @@ app.get('/download', async (req, res) => {
 
     // Start download
     logInfo(`Starting download`, { downloadId, url, options });
+    
+    // Check if this download was already cancelled before it started
+    if (pendingCancellations.has(downloadId)) {
+        logInfo('Download was pre-cancelled (cancel arrived before download started)', { downloadId });
+        pendingCancellations.delete(downloadId);
+        res.write(`data: ${JSON.stringify({ 
+            type: 'error', 
+            message: 'การดาวโหลดถูกยกเลิก' 
+        })}\n\n`);
+        res.end();
+        return;
+    }
     
     // Reserve the download slot BEFORE starting the process to handle early cancellation
     activeDownloads.set(downloadId, {
@@ -654,14 +669,21 @@ app.post('/downloads/:id/cancel', (req, res) => {
         
         res.json({ message: 'Download cancelled', downloadId, hadProcess: !!download.process });
     } else {
-        logWarn('Download not found for cancellation', { 
+        logWarn('Download not found for cancellation (may not have started yet or already finished)', { 
             requestedId: downloadId, 
             availableIds: activeIds 
         });
-        res.status(404).json({ 
-            error: 'Download not found',
+        
+        // Add to pending cancellations in case the download hasn't started yet
+        pendingCancellations.add(downloadId);
+        logInfo('Added to pending cancellations', { downloadId, pendingCount: pendingCancellations.size });
+        
+        // Return 200 instead of 404 - download may not have started yet
+        // This prevents race condition where cancel arrives before download endpoint
+        res.json({ 
+            message: 'Download cancellation registered (download may not have started yet)',
             requestedId: downloadId,
-            activeDownloads: activeIds
+            addedToPending: true
         });
     }
 });
