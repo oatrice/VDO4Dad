@@ -54,26 +54,15 @@ if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
 }
 
-// Initialize yt-dlp with fallback paths
-const ytDlpPaths = [
-    '/opt/homebrew/bin/yt-dlp',
-    '/usr/local/bin/yt-dlp',
-    'yt-dlp' // fallback to PATH
-];
-
 let ytDlpWrap;
-for (const ytDlpPath of ytDlpPaths) {
-    try {
-        ytDlpWrap = new YTDlpWrap(ytDlpPath);
-        logInfo('yt-dlp initialized', { path: ytDlpPath });
-        break;
-    } catch (error) {
-        logWarn('Failed to initialize yt-dlp', { path: ytDlpPath, error: error.message });
-    }
-}
-
-if (!ytDlpWrap) {
-    logError('Failed to initialize yt-dlp with any path', { paths: ytDlpPaths });
+try {
+    // Initialize yt-dlp-wrap without a path.
+    // It will automatically download the latest compatible binary.
+    ytDlpWrap = new YTDlpWrap();
+    logInfo('yt-dlp initialized successfully');
+} catch (error) {
+    logError('Failed to initialize yt-dlp-wrap', { error: error.message });
+    console.error('Could not initialize yt-dlp. Please check your internet connection or permissions.');
     process.exit(1);
 }
 
