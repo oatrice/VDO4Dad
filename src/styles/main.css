@@ -95,6 +95,9 @@ h1 {
     transition: width 0.3s ease-in-out;
     position: relative;
     overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .progress-bar::after {
