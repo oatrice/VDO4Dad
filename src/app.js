@@ -98,7 +98,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
         videoPlayer.src = video.filePath;
         videoTitle.textContent = video.title;
+        
+        // Set description and add read more functionality
         videoDescription.textContent = video.description;
+        videoDescription.classList.remove('expanded');
+        
+        // Remove any existing read more button
+        const existingButton = videoDescription.nextElementSibling;
+        if (existingButton && existingButton.classList.contains('read-more-btn')) {
+            existingButton.remove();
+        }
+        
+        // Check if description is long enough to need a read more button
+        if (videoDescription.scrollHeight > videoDescription.clientHeight) {
+            const readMoreBtn = document.createElement('button');
+            readMoreBtn.className = 'read-more-btn';
+            readMoreBtn.textContent = 'ดูคำอธิบายเพิ่ม';
+            readMoreBtn.addEventListener('click', () => {
+                videoDescription.classList.toggle('expanded');
+                readMoreBtn.textContent = videoDescription.classList.contains('expanded') ? 'ดูน้อยลง' : 'ดูเพิ่ม';
+            });
+            
+            // Insert the button after the description
+            videoDescription.parentNode.insertBefore(readMoreBtn, videoDescription.nextSibling);
+        }
+        
         videoPlayer.play();
 
         // Highlight the current video in the list
