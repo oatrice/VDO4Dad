@@ -189,10 +189,20 @@ h1 {
     max-height: 2.8em; /* 2 lines of text (1.4 line-height * 2) */
     overflow: hidden;
     transition: max-height 0.3s ease;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    text-overflow: ellipsis;
+    /* Standard property for compatibility */
+    line-clamp: 2;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
 }
 
 .video-description.expanded {
     max-height: none;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
 }
 
 .read-more-btn {
