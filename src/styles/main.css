@@ -100,6 +100,16 @@ h1 {
     justify-content: center;
 }
 
+.progress-bar::before {
+    content: attr(data-percent);
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    white-space: nowrap;
+}
+
 .progress-bar::after {
     content: '';
     position: absolute;
@@ -442,6 +452,17 @@ h1 {
     font-weight: 600;
     color: white;
     text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+    position: relative;
+}
+
+.queue-progress-bar::before {
+    content: attr(data-percent);
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    white-space: nowrap;
 }
 
 /* Status badges */

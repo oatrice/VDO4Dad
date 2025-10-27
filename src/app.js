@@ -539,14 +539,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const infoDiv = queueItem.querySelector('.queue-item-info');
             progressContainer = document.createElement('div');
             progressContainer.className = 'queue-item-progress';
-            progressContainer.innerHTML = '<div class="queue-progress-bar" style="width: 0%">0%</div>';
+            progressContainer.innerHTML = '<div class="queue-progress-bar" style="width: 0%" data-percent="0%"></div>';
             infoDiv.appendChild(progressContainer);
         }
 
         const progressBar = progressContainer.querySelector('.queue-progress-bar');
         if (progressBar) {
             progressBar.style.width = `${percent}%`;
-            progressBar.textContent = `${percent}%`;
+            progressBar.setAttribute('data-percent', `${percent}%`);
+            progressBar.textContent = ''; // Clear text content since we're using ::before pseudo-element
         }
 
         // Update status text to show percent for downloading items
