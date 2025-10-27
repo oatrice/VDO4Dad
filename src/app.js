@@ -49,6 +49,12 @@ document.addEventListener('DOMContentLoaded', () => {
             });
     }
 
+    // Add event listener for video end to play next video
+    videoPlayer.addEventListener('ended', () => {
+        const nextIndex = (currentVideoIndex + 1) % videos.length;
+        playVideo(nextIndex);
+    });
+
     // Initial load
     loadVideos();
 
