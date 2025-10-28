@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
-const YTDlpWrap = require('yt-dlp-wrap').default;
+const { YtDlp } = require('ytdlp-nodejs');
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 
 // Queue data file path
@@ -54,15 +54,15 @@ if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
 }
 
-let ytDlpWrap;
+let ytdlp;
 try {
-    // Initialize yt-dlp-wrap without a path.
-    // It will automatically download the latest compatible binary.
-    ytDlpWrap = new YTDlpWrap();
-    logInfo('yt-dlp initialized successfully');
+    // Initialize ytdlp-nodejs, passing the ffmpeg path.
+    // It will automatically download the latest yt-dlp binary.
+    ytdlp = new YtDlp({ ffmpegPath });
+    logInfo('ytdlp-nodejs initialized successfully');
 } catch (error) {
-    logError('Failed to initialize yt-dlp-wrap', { error: error.message });
-    console.error('Could not initialize yt-dlp. Please check your internet connection or permissions.');
+    logError('Failed to initialize ytdlp-nodejs', { error: error.message });
+    console.error('Could not initialize ytdlp-nodejs. Please check your internet connection or permissions.');
     process.exit(1);
 }
 
@@ -228,22 +228,22 @@ async function startQueueItemDownload(queueItem) {
             .replace(/\|/g, '｜')
             .replace(/[<>:"/\\?*]/g, '');
 
-        const outputPath = path.join(videosDir, `${queueItem.id}.%(ext)s`);
+        const options = {
+            output: path.join(videosDir, `${queueItem.id}.%(ext)s`),
+            format: 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]',
+            noPlaylist: true,
+            writeThumbnail: true,
+            mergeOutputFormat: 'mp4',
+            noWarnings: true,
+            retries: 10,
+            fragmentRetries: 10,
+            retrySleep: '1',
+            progress: true, // Required for progress events
+            progressTemplate: 'bright-{"status":"%(progress.status)s","downloaded":"%(progress.downloaded_bytes)s","total":"%(progress.total_bytes)s","total_estimate":"%(progress.total_bytes_estimate)s","speed":"%(progress.speed)s","eta":"%(progress.eta)s"}'
+        };
 
-        const options = [
-            '--output', outputPath,
-            '--format', 'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best[height<=720]',
-            '--no-playlist',
-            '--write-thumbnail',
-            '--merge-output-format', 'mp4',
-            '--ffmpeg-location', ffmpegPath,
-            '--no-warnings',
-            '--retries', '10',
-            '--fragment-retries', '10',
-            '--retry-sleep', '1'
-        ];
-
-        const downloadProcess = ytDlpWrap.exec([queueItem.url, ...options]);
+        // The returned object is the ChildProcess instance
+        const downloadProcess = ytdlp.exec(queueItem.url, options);
 
         // Track download stages for progress calculation
         let downloadStage = 'video'; // video, audio
@@ -523,7 +523,7 @@ app.get('/download', async (req, res) => {
     let videoInfo;
     try {
         // 1. Get video metadata first to get the correct title
-        videoInfo = await ytDlpWrap.getVideoInfo(url);
+        videoInfo = await ytdlp.getInfoAsync(url);
         logInfo('Fetched video info', { title: videoInfo.title, url });
     } catch (error) {
         logError('Failed to get video info', { error: error.message, url });
@@ -537,26 +537,24 @@ app.get('/download', async (req, res) => {
         .replace(/\|/g, '｜') // Replace pipe with full-width pipe
         .replace(/[<>:"/\\?*]/g, ''); // Remove other invalid characters
 
-    const outputPath = path.join(videosDir, `${sanitizedTitle}.%(ext)s`);
-
     // Configure yt-dlp options
-    const options = [
-        '--output', outputPath,
+    const options = {
+        output: path.join(videosDir, `${sanitizedTitle}.%(ext)s`),
         // Prioritize MP4 format, up to 720p. Fallback to best available.
-        '--format', 'bestvideo[height<=720][ext=mp4][protocol!=m3u8]+bestaudio[ext=m4a][protocol!=m3u8]/best[height<=720][ext=mp4][protocol!=m3u8]/best[height<=720][protocol!=m3u8]',
-        '--no-playlist', // Download only single video, not playlist
-        '--write-thumbnail', // Download thumbnail
-        '--merge-output-format', 'mp4', // Ensure the final file is mp4
-        // Specify ffmpeg location to ensure merging works
-        '--ffmpeg-location', ffmpegPath,
-        '--no-warnings', // Suppress warnings
-        '--verbose', // Add verbose logging for debugging
-        '--print-traffic', // Print HTTP traffic for debugging
+        format: 'bestvideo[height<=720][ext=mp4][protocol!=m3u8]+bestaudio[ext=m4a][protocol!=m3u8]/best[height<=720][ext=mp4][protocol!=m3u8]/best[height<=720][protocol!=m3u8]',
+        noPlaylist: true, // Download only single video, not playlist
+        writeThumbnail: true, // Download thumbnail
+        mergeOutputFormat: 'mp4', // Ensure the final file is mp4
+        noWarnings: true, // Suppress warnings
+        verbose: true, // Add verbose logging for debugging
+        printTraffic: true, // Print HTTP traffic for debugging
         // Retries for resiliency
-        '--retries', '10',
-        '--fragment-retries', '10',
-        '--retry-sleep', '1'
-    ];
+        retries: 10,
+        fragmentRetries: 10,
+        retrySleep: '1',
+        progress: true, // Required for progress events
+        progressTemplate: 'bright-{"status":"%(progress.status)s","downloaded":"%(progress.downloaded_bytes)s","total":"%(progress.total_bytes)s","total_estimate":"%(progress.total_bytes_estimate)s","speed":"%(progress.speed)s","eta":"%(progress.eta)s"}'
+    };
 
     // Start download
     logInfo(`Starting download`, { downloadId, url, options });
@@ -583,9 +581,9 @@ app.get('/download', async (req, res) => {
     
     // Log yt-dlp version and configuration
     try {
-        const ytDlpVersion = await ytDlpWrap.getVersion();
-        logInfo('yt-dlp version', { downloadId, version: ytDlpVersion });
-    } catch (error) {
+        const isInstalled = await ytdlp.checkInstallationAsync();
+        logInfo('ytdlp-nodejs installation check', { downloadId, isInstalled });
+    } catch (error) { // checkInstallationAsync rejects on failure
         logWarn('Failed to get yt-dlp version', { downloadId, error: error.message });
     }
     
@@ -612,10 +610,7 @@ app.get('/download', async (req, res) => {
         return;
     }
     
-    const downloadProcess = ytDlpWrap.exec([
-        url,
-        ...options
-    ]);
+    const downloadProcess = ytdlp.exec(url, options);
 
     // Check if downloadProcess exists
     if (!downloadProcess) {
@@ -633,7 +628,7 @@ app.get('/download', async (req, res) => {
     }
 
     // Add process validation
-    if (!downloadProcess.ytDlpProcess) {
+    if (!downloadProcess.pid) {
         logError('yt-dlp process not available', { downloadId, url });
         res.write(`data: ${JSON.stringify({ 
             type: 'error', 
@@ -641,7 +636,7 @@ app.get('/download', async (req, res) => {
         })}\n\n`);
         res.end();
         activeDownloads.delete(downloadId);
-        
+
         // Add session separator
         logInfo('=== Download Session Ended (Error) ===', { downloadId, frontendId: frontendDownloadId });
         return;
@@ -665,8 +660,8 @@ app.get('/download', async (req, res) => {
     } else {
         // Was deleted (cancelled) while exec was starting
         logWarn('Download was cancelled during process creation', { downloadId });
-        if (downloadProcess && downloadProcess.ytDlpProcess) {
-            downloadProcess.ytDlpProcess.kill();
+        if (downloadProcess && downloadProcess.pid) {
+            downloadProcess.kill();
         }
         cleanup();
         res.write(`data: ${JSON.stringify({ 
@@ -680,8 +675,8 @@ app.get('/download', async (req, res) => {
     // Add timeout to prevent hanging
     downloadTimeout = setTimeout(() => {
         logError('Download timeout after 5 minutes', { downloadId });
-        if (downloadProcess && downloadProcess.ytDlpProcess) {
-            downloadProcess.ytDlpProcess.kill('SIGTERM');
+        if (downloadProcess && downloadProcess.pid) {
+            downloadProcess.kill('SIGTERM');
         }
         cleanup();
         res.write(`data: ${JSON.stringify({ 
@@ -711,21 +706,21 @@ app.get('/download', async (req, res) => {
 
     // Add process health monitoring
     processHealthInterval = setInterval(() => {
-        if (downloadProcess && downloadProcess.ytDlpProcess) {
-            const isRunning = !downloadProcess.ytDlpProcess.killed && 
-                             downloadProcess.ytDlpProcess.exitCode === null;
+        if (downloadProcess && downloadProcess.pid) {
+            const isRunning = !downloadProcess.killed &&
+                             downloadProcess.exitCode === null;
             
             if (!isRunning) {
                 logWarn('yt-dlp process is not running', { 
                     downloadId, 
-                    killed: downloadProcess.ytDlpProcess.killed,
-                    exitCode: downloadProcess.ytDlpProcess.exitCode
+                    killed: downloadProcess.killed,
+                    exitCode: downloadProcess.exitCode
                 });
             } else {
                 // Log process health every 10 seconds for debugging
                 logInfo('yt-dlp process health check', { 
                     downloadId, 
-                    pid: downloadProcess.ytDlpProcess.pid,
+                    pid: downloadProcess.pid,
                     isRunning: true
                 });
             }
@@ -803,19 +798,19 @@ app.get('/download', async (req, res) => {
     });
 
     // Handle stderr output for better error reporting
-    if (downloadProcess.ytDlpProcess && downloadProcess.ytDlpProcess.stderr) {
-        downloadProcess.ytDlpProcess.stderr.on('data', (data) => {
+    if (downloadProcess && downloadProcess.stderr) {
+        downloadProcess.stderr.on('data', (data) => {
             const errorOutput = data.toString();
             if (errorOutput.trim()) {
                 logWarn('yt-dlp stderr output', { downloadId, stderr: errorOutput.trim() });
             }
         });
     }
-
+    
     // Handle stdout output for debugging
-    if (downloadProcess.ytDlpProcess && downloadProcess.ytDlpProcess.stdout) {
-        let destinationCount = 0;
-        downloadProcess.ytDlpProcess.stdout.on('data', (data) => {
+    if (downloadProcess && downloadProcess.stdout) {
+        let destinationCount = 0; // This logic might need adjustment
+        downloadProcess.stdout.on('data', (data) => {
             const output = data.toString();
             if (output.includes('[download] Destination:')) {
                 destinationCount++;
@@ -1026,10 +1021,10 @@ app.post('/downloads/:id/cancel', (req, res) => {
         }
         
         // Kill the process if it exists
-        if (download.process && download.process.ytDlpProcess) {
+        if (download.process && download.process.pid) {
             try {
-                download.process.ytDlpProcess.kill('SIGKILL'); // Use SIGKILL for immediate termination
-                logInfo('Process killed with SIGKILL', { downloadId, pid: download.process.ytDlpProcess.pid });
+                download.process.kill('SIGKILL'); // Use SIGKILL for immediate termination
+                logInfo('Process killed with SIGKILL', { downloadId, pid: download.process.pid });
             } catch (error) {
                 logError('Failed to kill process', { downloadId, error: error.message });
             }
@@ -1141,20 +1136,21 @@ app.get('/api/queue/:id/download-stream', async (req, res) => {
         
         const outputPath = path.join(__dirname, 'src', 'videos', `${queueItem.id}.mp4`);
         
-        // Start download using existing download logic
-        const downloadProcess = ytDlpWrap.exec([
-            queueItem.url,
-            '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            '-o', outputPath,
-            '--newline',
-            '--no-playlist',
-            '--ffmpeg-location', ffmpegPath
-        ]);
+        const options = {
+            format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            output: outputPath,
+            newline: true,
+            noPlaylist: true,
+            progress: true,
+            progressTemplate: 'bright-{"status":"%(progress.status)s","downloaded":"%(progress.downloaded_bytes)s","total":"%(progress.total_bytes)s","total_estimate":"%(progress.total_bytes_estimate)s","speed":"%(progress.speed)s","eta":"%(progress.eta)s"}'
+        };
+
+        const downloadProcess = ytdlp.exec(queueItem.url, options);
         
-        queueItem.pid = downloadProcess.ytDlpProcess?.pid || null;
+        queueItem.pid = downloadProcess.pid || null;
         saveQueueData();
         
-        logInfo('[Queue Download Stream] Download process started', { queueId: id, pid: queueItem.pid });
+        logInfo('[Queue Download Stream] Download process started', { queueId: id, pid: queueItem.pid, options });
         
         // Track download stages for progress calculation
         let lastRawPercent = 0;
@@ -1337,7 +1333,7 @@ app.post('/api/queue/batch', async (req, res) => {
                 
                 // Fetch video metadata
                 logInfo(`[Add Batch to Queue API] Fetching metadata for URL ${i + 1}/${urls.length}`, { url });
-                const videoInfo = await ytDlpWrap.getVideoInfo(url);
+                const videoInfo = await ytdlp.getInfoAsync(url);
                 logInfo(`[Add Batch to Queue API] Successfully fetched metadata for URL ${i + 1}/${urls.length}`, { 
                     title: videoInfo.title, 
                     url,
@@ -1456,7 +1452,7 @@ app.post('/api/queue', async (req, res) => {
         logInfo('[Add to Queue API] Fetching video metadata', { url });
         let videoInfo;
         try {
-            videoInfo = await ytDlpWrap.getVideoInfo(url);
+            videoInfo = await ytdlp.getInfoAsync(url);
             logInfo('[Add to Queue API] Successfully fetched video metadata', { 
                 title: videoInfo.title, 
                 url,
@@ -1545,7 +1541,7 @@ process.on('SIGINT', () => {
     // Kill all active downloads
     activeDownloads.forEach((download, id) => {
         if (download.process) {
-            download.process.ytDlpProcess.kill();
+            download.process.kill();
         }
     });
     

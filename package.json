@@ -32,6 +32,6 @@
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "cors": "^2.8.5",
     "express": "^4.18.2",
-    "yt-dlp-wrap": "^2.3.12"
+    "ytdlp-nodejs": "^2.3.5"
   }
 }
