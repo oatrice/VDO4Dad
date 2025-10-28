@@ -238,8 +238,7 @@ async function startQueueItemDownload(queueItem) {
             retries: 10,
             fragmentRetries: 10,
             retrySleep: '1',
-            progress: true, // Required for progress events
-            progressTemplate: 'bright-{"status":"%(progress.status)s","downloaded":"%(progress.downloaded_bytes)s","total":"%(progress.total_bytes)s","total_estimate":"%(progress.total_bytes_estimate)s","speed":"%(progress.speed)s","eta":"%(progress.eta)s"}'
+            newline: true // Required for progress parsing
         };
 
         // The returned object is the ChildProcess instance
@@ -248,8 +247,57 @@ async function startQueueItemDownload(queueItem) {
         // Track download stages for progress calculation
         let downloadStage = 'video'; // video, audio
         let stageOffset = 0; // 0 for video, 50 for audio
+        let lastPercent = 0;
 
-        // Handle progress
+        // Parse stdout for progress since ytdlp-nodejs doesn't emit progress events reliably
+        downloadProcess.stdout.on('data', (data) => {
+            const output = data.toString();
+            // Match yt-dlp progress format: [download]  45.2% of 10.5MiB at 1.2MiB/s ETA 00:05
+            const progressMatch = output.match(/\[download\]\s+(\d+\.?\d*)%/);
+            
+            if (progressMatch) {
+                const rawPercent = parseFloat(progressMatch[1]);
+                
+                // Detect stage change: if progress goes backwards, we're in a new stage
+                if (rawPercent < lastPercent && lastPercent > 90) {
+                    downloadStage = 'audio';
+                    stageOffset = 50;
+                    logInfo('[Auto Queue Download] Stage changed to audio', { queueId: queueItem.id });
+                }
+                lastPercent = rawPercent;
+                
+                // Calculate final percent: each stage is 50% of total
+                const finalPercent = Math.min(100, Math.round(stageOffset + (rawPercent / 2)));
+                
+                const message = downloadStage === 'video'
+                    ? `[1/2] กำลังดาวน์โหลดวิดีโอ`
+                    : `[2/2] กำลังดาวน์โหลดเสียง`;
+                
+                queueItem.progress = finalPercent;
+                saveQueueData();
+                
+                // Broadcast progress update
+                broadcastQueueUpdate({
+                    type: 'queue_updated',
+                    action: 'progress',
+                    item: {
+                        id: queueItem.id,
+                        progress: finalPercent,
+                        status: queueItem.status
+                    }
+                });
+                
+                logInfo('[Auto Queue Download] Progress', {
+                    queueId: queueItem.id,
+                    rawPercent,
+                    finalPercent,
+                    stage: downloadStage,
+                    stageOffset
+                });
+            }
+        });
+
+        // Keep the old progress event handler as fallback
         downloadProcess.on('progress', (progress) => {
             const rawPercent = progress.percent || 0;
 
@@ -282,7 +330,7 @@ async function startQueueItemDownload(queueItem) {
                 }
             });
 
-            logInfo('[Auto Queue Download] Progress', {
+            logInfo('[Auto Queue Download] Progress (event)', {
                 queueId: queueItem.id,
                 rawPercent,
                 finalPercent,
@@ -552,7 +600,8 @@ app.get('/download', async (req, res) => {
         retries: 10,
         fragmentRetries: 10,
         retrySleep: '1',
-        progress: true, // Required for progress events
+        progress: true,
+        newline: true, // Required for progress parsing from stdout
         progressTemplate: 'bright-{"status":"%(progress.status)s","downloaded":"%(progress.downloaded_bytes)s","total":"%(progress.total_bytes)s","total_estimate":"%(progress.total_bytes_estimate)s","speed":"%(progress.speed)s","eta":"%(progress.eta)s"}'
     };
 
@@ -1140,9 +1189,7 @@ app.get('/api/queue/:id/download-stream', async (req, res) => {
             format: 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             output: outputPath,
             newline: true,
-            noPlaylist: true,
-            progress: true,
-            progressTemplate: 'bright-{"status":"%(progress.status)s","downloaded":"%(progress.downloaded_bytes)s","total":"%(progress.total_bytes)s","total_estimate":"%(progress.total_bytes_estimate)s","speed":"%(progress.speed)s","eta":"%(progress.eta)s"}'
+            noPlaylist: true
         };
 
         const downloadProcess = ytdlp.exec(queueItem.url, options);
@@ -1157,7 +1204,50 @@ app.get('/api/queue/:id/download-stream', async (req, res) => {
         let downloadStage = 'video'; // video, audio
         let stageOffset = 0; // 0 for video, 50 for audio
         
-        // Handle progress
+        // Parse stdout for progress since ytdlp-nodejs doesn't emit progress events reliably
+        downloadProcess.stdout.on('data', (data) => {
+            const output = data.toString();
+            // Match yt-dlp progress format: [download]  45.2% of 10.5MiB at 1.2MiB/s ETA 00:05
+            const progressMatch = output.match(/\[download\]\s+(\d+\.?\d*)%/);
+            
+            if (progressMatch) {
+                const rawPercent = parseFloat(progressMatch[1]);
+                
+                // Detect stage change: if progress goes backwards, we're in a new stage
+                if (rawPercent < lastRawPercent && lastRawPercent > 90) {
+                    downloadStage = 'audio';
+                    stageOffset = 50;
+                    logInfo('[Queue Download Stream] Stage changed to audio', { queueId: id });
+                }
+                lastRawPercent = rawPercent;
+                
+                // Calculate final percent: each stage is 50% of total
+                const finalPercent = Math.min(100, Math.round(stageOffset + (rawPercent / 2)));
+                
+                const message = downloadStage === 'video' 
+                    ? '[1/2] กำลังดาวน์โหลดวิดีโอ' 
+                    : '[2/2] กำลังดาวน์โหลดเสียง';
+                
+                queueItem.progress = finalPercent;
+                saveQueueData();
+                
+                res.write(`data: ${JSON.stringify({ 
+                    type: 'progress', 
+                    percent: finalPercent,
+                    message: message
+                })}\n\n`);
+                
+                logInfo('[Queue Download Stream] Progress', { 
+                    queueId: id, 
+                    rawPercent, 
+                    finalPercent, 
+                    stage: downloadStage,
+                    stageOffset
+                });
+            }
+        });
+        
+        // Keep the old progress event handler as fallback
         downloadProcess.on('progress', (progress) => {
             const rawPercent = progress.percent || 0;
             
@@ -1186,7 +1276,7 @@ app.get('/api/queue/:id/download-stream', async (req, res) => {
                 message: message
             })}\n\n`);
             
-            logInfo('[Queue Download Stream] Progress', { 
+            logInfo('[Queue Download Stream] Progress (event)', { 
                 queueId: id, 
                 rawPercent, 
                 finalPercent, 
