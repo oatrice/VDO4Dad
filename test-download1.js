@@ -1,24 +1,29 @@
-const YTDlpWrap = require('yt-dlp-wrap').default;
+const { YtDlp } = require('ytdlp-nodejs');
+const ytdlp = new YtDlp();
 
-// Test yt-dlp functionality
+// Test ytdlp functionality
 async function testYtDlp() {
-    console.log('🧪 Testing yt-dlp functionality...');
+    console.log('🧪 Testing ytdlp functionality...');
     
     try {
-        const ytDlpWrap = new YTDlpWrap();
+        // Check if yt-dlp is installed
+        const isInstalled = await ytdlp.checkInstallationAsync();
+        if (!isInstalled) {
+            throw new Error('yt-dlp is not installed or not in PATH');
+        }
         
-        // Test getting version
-        const version = await ytDlpWrap.getVersion();
-        console.log('✅ yt-dlp version:', version);
+        // Get version by executing yt-dlp --version
+        const version = await ytdlp.execAsync('--version');
+        console.log('✅ ytdlp version:', version.trim());
         
-        // Test getting help
-        const help = await ytDlpWrap.getHelp();
-        console.log('✅ yt-dlp help available (length:', help.length, 'characters)');
+        // Get help by executing yt-dlp --help
+        const help = await ytdlp.execAsync('--help');
+        console.log('✅ ytdlp help available (length:', help.length, 'characters)');
         
-        console.log('🎉 yt-dlp is working correctly!');
+        console.log('🎉 ytdlp is working correctly!');
         return true;
     } catch (error) {
-        console.error('❌ yt-dlp test failed:', error.message);
+        console.error('❌ ytdlp test failed:', error.message);
         return false;
     }
 }
