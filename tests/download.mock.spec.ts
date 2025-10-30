@@ -8,43 +8,70 @@ test.describe('Download flow (mocked SSE)', () => {
             consoleMessages.push(`[${msg.type()}] ${msg.text()}`);
         });
 
-        // Set up mock EventSource
+        // Set up mock EventSource with detailed logging
         await page.addInitScript(() => {
             const simulatedFilePath = 'videos/mock-video.mp4';
+            
+            // Add debug logging function
+            const debugLog = (message: string, data?: any) => {
+                console.log(`[MockEventSource] ${message}`, data || '');
+            };
+            
             class MockEventSource {
                 onmessage: ((event: MessageEvent) => void) | null = null;
                 onerror: ((event: Event) => void) | null = null;
                 private timeoutIds: NodeJS.Timeout[] = [];
+                private url: string;
 
                 constructor(url: string) {
-                    console.log(`MockEventSource created for URL: ${url}`);
+                    this.url = url;
+                    debugLog(`Created for URL: ${url}`);
                     
                     // Simulate different stages of download
+                    this.scheduleEvent('start', { type: 'start', message: 'Starting download...' }, 20);
+                    this.scheduleEvent('progress', { type: 'progress', percent: 40 }, 80);
+                    this.scheduleEvent('done', { 
+                        type: 'done', 
+                        message: 'Download complete!', 
+                        filePath: simulatedFilePath, 
+                        title: 'Mock Video' 
+                    }, 150);
+                }
+                
+                private scheduleEvent(name: string, data: any, delay: number) {
+                    debugLog(`Scheduling ${name} event in ${delay}ms`, data);
                     this.timeoutIds.push(
-                        setTimeout(() => this.emitMessage({ type: 'start', message: 'Starting download...' }), 20),
-                        setTimeout(() => this.emitMessage({ type: 'progress', percent: 40 }), 80),
-                        setTimeout(() => this.emitMessage({ 
-                            type: 'done', 
-                            message: 'Download complete!', 
-                            filePath: simulatedFilePath, 
-                            title: 'Mock Video' 
-                        }), 150)
+                        setTimeout(() => this.emitMessage(data), delay)
                     );
                 }
-
+                
                 private emitMessage(data: any) {
+                    debugLog(`Emitting message: ${data.type}`, data);
                     if (this.onmessage) {
-                        this.onmessage(new MessageEvent('message', { 
+                        const event = new MessageEvent('message', { 
                             data: JSON.stringify(data) 
-                        }));
+                        });
+                        debugLog(`Dispatching message to onmessage handler`, data);
+                        this.onmessage(event);
+                    } else {
+                        debugLog('No onmessage handler registered!', null);
                     }
                 }
 
-                addEventListener() {}
+                addEventListener(event: string, listener: EventListenerOrEventListenerObject | null) {
+                    debugLog(`addEventListener called for '${event}'`);
+                    if (event === 'message' && typeof listener === 'function') {
+                        this.onmessage = (e) => (listener as (e: MessageEvent) => void)(e);
+                    } else if (event === 'error' && typeof listener === 'function') {
+                        this.onerror = (e) => (listener as (e: Event) => void)(e);
+                    }
+                }
                 
                 close() {
+                    debugLog('Closing MockEventSource');
                     // Clean up timeouts to prevent memory leaks
                     this.timeoutIds.forEach(clearTimeout);
+                    this.timeoutIds = [];
                 }
             }
             // @ts-ignore
