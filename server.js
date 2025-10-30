@@ -1381,7 +1381,7 @@ app.delete('/api/queue', (req, res) => {
 });
 
 // Add multiple items to queue (batch)
-app.post('/api/queue/batch', async (req, res) => {
+app.post('/api/queue/getInfo', async (req, res) => {
     try {
         const { urls } = req.body;
         
