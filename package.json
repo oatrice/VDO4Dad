@@ -21,6 +21,9 @@
   "author": "Your Name",
   "license": "MIT",
   "devDependencies": {
+    "@actions/artifact": "^2.1.1",
+    "@actions/core": "^1.10.0",
+    "@actions/exec": "^1.1.1",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@playwright/test": "^1.55.1",
     "concurrently": "^8.2.2",
