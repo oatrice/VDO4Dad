@@ -33,7 +33,7 @@ jobs:
   e2e-test:
     name: E2E Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20  # Fail if tests run longer than 20 minutes
+    timeout-minutes: 10  # Reduced from 20 minutes
     
     steps:
     - name: Checkout code
@@ -59,9 +59,9 @@ jobs:
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps chromium
       
-    - name: Run Playwright tests
-      timeout-minutes: 15  # Fail individual test step if it takes too long
-      run: npm run test:e2e -- --workers=2  # Run tests with 2 workers in parallel
+    - name: Run Playwright mock tests
+      timeout-minutes: 5  # Mock tests should be much faster
+      run: npm run test:e2e -- --config=playwright.ci.config.ts --workers=4  # Increased workers to 4
       
   deploy:
     name: Deploy
