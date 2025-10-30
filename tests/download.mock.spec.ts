@@ -1,33 +1,99 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, ConsoleMessage } from '@playwright/test';
 
 test.describe('Download flow (mocked SSE)', () => {
     test('shows success message with mocked EventSource', async ({ page }) => {
+        // Collect all console logs for debugging
+        const consoleMessages: string[] = [];
+        page.on('console', (msg: ConsoleMessage) => {
+            consoleMessages.push(`[${msg.type()}] ${msg.text()}`);
+        });
+
+        // Set up mock EventSource
         await page.addInitScript(() => {
-            const simulatedFilePath = 'videos/%F0%9F%92%971-Minute%20Timer%20%EF%BD%9C%20Pink%20Checkered%20Countdown%20%26%20Soft%20Bell%20%F0%9F%8C%9F%204K.mp4';
+            const simulatedFilePath = 'videos/mock-video.mp4';
             class MockEventSource {
                 onmessage: ((event: MessageEvent) => void) | null = null;
                 onerror: ((event: Event) => void) | null = null;
+                private timeoutIds: NodeJS.Timeout[] = [];
+
                 constructor(url: string) {
-                    setTimeout(() => { this.onmessage && this.onmessage(new MessageEvent('message', { data: JSON.stringify({ type: 'start', message: 'เริ่มดาวโหลด...' }) })); }, 20);
-                    setTimeout(() => { this.onmessage && this.onmessage(new MessageEvent('message', { data: JSON.stringify({ type: 'progress', percent: 40 }) })); }, 80);
-                    setTimeout(() => { this.onmessage && this.onmessage(new MessageEvent('message', { data: JSON.stringify({ type: 'done', message: 'ดาวโหลดสำเร็จ!', filePath: simulatedFilePath, title: 'Mock Video' }) })); }, 150);
+                    console.log(`MockEventSource created for URL: ${url}`);
+                    
+                    // Simulate different stages of download
+                    this.timeoutIds.push(
+                        setTimeout(() => this.emitMessage({ type: 'start', message: 'Starting download...' }), 20),
+                        setTimeout(() => this.emitMessage({ type: 'progress', percent: 40 }), 80),
+                        setTimeout(() => this.emitMessage({ 
+                            type: 'done', 
+                            message: 'Download complete!', 
+                            filePath: simulatedFilePath, 
+                            title: 'Mock Video' 
+                        }), 150)
+                    );
                 }
+
+                private emitMessage(data: any) {
+                    if (this.onmessage) {
+                        this.onmessage(new MessageEvent('message', { 
+                            data: JSON.stringify(data) 
+                        }));
+                    }
+                }
+
                 addEventListener() {}
-                close() {}
+                
+                close() {
+                    // Clean up timeouts to prevent memory leaks
+                    this.timeoutIds.forEach(clearTimeout);
+                }
             }
             // @ts-ignore
             window.EventSource = MockEventSource;
         });
 
-        await page.goto('/');
-        await page.fill('#url-input', 'https://example.com/video');
-        await page.click('#download-btn');
+        try {
+            // Set test timeout to 30 seconds (overrides the config timeout for this test)
+            test.setTimeout(30000);
 
-        const statusItem = page.locator('#download-status-container .download-status-item');
-        await statusItem.waitFor({ state: 'visible', timeout: 10000 });
+            // Add navigation timeout
+            await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 10000 });
+            
+            // Add action timeouts
+            await page.fill('#url-input', 'https://example.com/video', { timeout: 5000 });
+            await page.click('#download-btn', { timeout: 5000 });
 
-        const successLocator = page.locator('#download-status-container .download-status-item.success');
-        await successLocator.waitFor({ state: 'visible', timeout: 10000 });
+            // Wait for status item with detailed error message
+            const statusItem = page.locator('#download-status-container .download-status-item');
+            await statusItem.waitFor({ 
+                state: 'visible', 
+                timeout: 10000,
+                timeoutMsg: 'Status item did not appear within 10 seconds'
+            });
+
+            // Wait for success with detailed error message
+            const successLocator = page.locator('#download-status-container .download-status-item.success');
+            await successLocator.waitFor({ 
+                state: 'visible', 
+                timeout: 10000,
+                timeoutMsg: 'Success message did not appear within 10 seconds. ' +
+                           'Check if the download completed successfully.'
+            });
+
+            // Verify the success message content
+            await expect(successLocator).toContainText('ดาวโหลดสำเร็จ!', { timeout: 5000 });
+            
+        } catch (error) {
+            // Log all console messages when test fails
+            console.error('Test failed. Console logs:');
+            console.log(consoleMessages.join('\n'));
+            
+            // Take a screenshot on failure
+            await page.screenshot({ path: 'test-failure.png', fullPage: true });
+            console.log('Screenshot saved as test-failure.png');
+            
+            // Re-throw the error to fail the test
+            throw error;
+        }
     });
 });
 
