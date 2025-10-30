@@ -58,26 +58,26 @@ test.describe('Download flow (mocked SSE)', () => {
             // Add navigation timeout
             await page.goto('/', { waitUntil: 'domcontentloaded', timeout: 10000 });
             
-            // Add action timeouts
-            await page.fill('#url-input', 'https://example.com/video', { timeout: 5000 });
-            await page.click('#download-btn', { timeout: 5000 });
+            // Add action timeouts with correct selectors
+            await page.fill('#queue-url-input', 'https://example.com/video', { timeout: 5000 });
+            await page.click('#add-to-queue-btn', { timeout: 5000 });
 
-            // Wait for status item with detailed error message
+            // Wait for status item with error handling
             const statusItem = page.locator('#download-status-container .download-status-item');
-            await statusItem.waitFor({ 
-                state: 'visible', 
-                timeout: 10000,
-                timeoutMsg: 'Status item did not appear within 10 seconds'
-            });
+            try {
+                await statusItem.waitFor({ state: 'visible', timeout: 10000 });
+            } catch (error) {
+                throw new Error('Status item did not appear within 10 seconds');
+            }
 
-            // Wait for success with detailed error message
+            // Wait for success with error handling
             const successLocator = page.locator('#download-status-container .download-status-item.success');
-            await successLocator.waitFor({ 
-                state: 'visible', 
-                timeout: 10000,
-                timeoutMsg: 'Success message did not appear within 10 seconds. ' +
-                           'Check if the download completed successfully.'
-            });
+            try {
+                await successLocator.waitFor({ state: 'visible', timeout: 10000 });
+            } catch (error) {
+                throw new Error('Success message did not appear within 10 seconds. ' +
+                              'Check if the download completed successfully.');
+            }
 
             // Verify the success message content
             await expect(successLocator).toContainText('ดาวโหลดสำเร็จ!', { timeout: 5000 });
