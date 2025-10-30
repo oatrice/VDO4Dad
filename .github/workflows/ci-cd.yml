@@ -67,12 +67,15 @@ jobs:
       run: |
         set -e  # Exit immediately if a command exits with a non-zero status
         
+        # Create test-results directory if it doesn't exist
+        mkdir -p test-results
+        
         # Run tests and capture the exit code
         npx playwright test \
           --config=playwright.ci.config.ts \
           --workers=4 \
           --reporter=junit,html,github \
-          --output=test-results/ || TEST_RESULT=$?
+          --output=test-results/playwright-junit.xml || TEST_RESULT=$?
         
         # Always upload test results, even if tests fail
         exit ${TEST_RESULT:-0}
@@ -81,9 +84,10 @@ jobs:
       if: always()
       uses: mikepenz/action-junit-report@v4
       with:
-        report_paths: '**/test-results/*.xml'
-        fail_on_failure: false
-        require_tests: false
+        report_paths: 'test-results/playwright-junit.xml'
+        fail_on_failure: true
+        require_tests: true
+      continue-on-error: false
     
     - name: Publish HTML Report
       if: always()
