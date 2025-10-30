@@ -10,8 +10,8 @@ on:
     branches: [ main, master ]
 
 jobs:
-  test:
-    name: Run Tests
+  unit-test:
+    name: Unit Tests
     runs-on: ubuntu-latest
     
     steps:
@@ -29,13 +29,34 @@ jobs:
     
     - name: Run unit tests
       run: npm test
+  
+  e2e-test:
+    name: E2E Tests
+    needs: unit-test  # Run after unit tests pass
+    runs-on: ubuntu-latest
     
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Install Playwright Browsers
+      run: npx playwright install --with-deps
+      
     - name: Run Playwright tests
-      run: npx playwright install --with-deps && npm run test:e2e
+      run: npm run test:e2e
       
   deploy:
     name: Deploy
-    needs: test
+    needs: [unit-test, e2e-test]  # Wait for both test jobs to complete
     # Only run on main/master branch
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
