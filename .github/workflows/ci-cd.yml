@@ -64,13 +64,18 @@ jobs:
     
     - name: Run Playwright tests with JUnit and HTML reports
       id: playwright-test
-      continue-on-error: true  # Continue to upload reports even if tests fail
       run: |
+        set -e  # Exit immediately if a command exits with a non-zero status
+        
+        # Run tests and capture the exit code
         npx playwright test \
           --config=playwright.ci.config.ts \
           --workers=4 \
           --reporter=junit,html,github \
-          --output=test-results/
+          --output=test-results/ || TEST_RESULT=$?
+        
+        # Always upload test results, even if tests fail
+        exit ${TEST_RESULT:-0}
     
     - name: Publish Test Results
       if: always()
