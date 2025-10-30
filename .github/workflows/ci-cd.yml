@@ -32,8 +32,8 @@ jobs:
   
   e2e-test:
     name: E2E Tests
-    needs: unit-test  # Run after unit tests pass
     runs-on: ubuntu-latest
+    timeout-minutes: 20  # Fail if tests run longer than 20 minutes
     
     steps:
     - name: Checkout code
@@ -47,16 +47,26 @@ jobs:
     
     - name: Install dependencies
       run: npm ci
-      
+    
+    - name: Cache Playwright browsers
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/ms-playwright
+        key: ${{ runner.os }}-browsers-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-browsers-
+    
     - name: Install Playwright Browsers
-      run: npx playwright install --with-deps
+      run: npx playwright install --with-deps chromium
       
     - name: Run Playwright tests
-      run: npm run test:e2e
+      timeout-minutes: 15  # Fail individual test step if it takes too long
+      run: npm run test:e2e -- --workers=2  # Run tests with 2 workers in parallel
       
   deploy:
     name: Deploy
     needs: [unit-test, e2e-test]  # Wait for both test jobs to complete
+    timeout-minutes: 15
     # Only run on main/master branch
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
