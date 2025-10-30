@@ -62,25 +62,50 @@ test.describe('Download flow (mocked SSE)', () => {
             await page.fill('#queue-url-input', 'https://example.com/video', { timeout: 5000 });
             await page.click('#add-to-queue-btn', { timeout: 5000 });
 
-            // Wait for status item with error handling
-            const statusItem = page.locator('#download-status-container .download-status-item');
+            // Wait for queue item to appear
+            console.log('Waiting for queue item to appear...');
+            const queueItem = page.locator('#queue-list .queue-item');
             try {
-                await statusItem.waitFor({ state: 'visible', timeout: 10000 });
+                await queueItem.waitFor({ state: 'visible', timeout: 10000 });
+                console.log('Queue item is visible');
+                
+                // Debug: Log the HTML of the queue list
+                const queueListHtml = await page.locator('#queue-list').innerHTML();
+                console.log('Queue list content:', queueListHtml);
+                
             } catch (error) {
-                throw new Error('Status item did not appear within 10 seconds');
+                // Log the current page state before failing
+                console.error('Status item not found. Current page state:');
+                console.log('Page URL:', page.url());
+                console.log('Page title:', await page.title());
+                
+                // Check if the container exists
+                const containerExists = await page.locator('#download-status-container').isVisible();
+                console.log('Container exists:', containerExists);
+                
+                if (containerExists) {
+                    const containerHtml = await page.locator('#download-status-container').innerHTML();
+                    console.log('Container HTML:', containerHtml);
+                } else {
+                    console.log('Container HTML (entire page):', await page.content());
+                }
+                
+                throw new Error('Status item did not appear within 10 seconds. See logs for details.');
             }
 
-            // Wait for success with error handling
-            const successLocator = page.locator('#download-status-container .download-status-item.success');
+            // Wait for download to complete (check for success class or specific text)
+            const successIndicator = page.locator('#queue-list .queue-item.completed, #queue-list .queue-item:has-text("ดาวน์โหลดสำเร็จ")');
             try {
-                await successLocator.waitFor({ state: 'visible', timeout: 10000 });
+                await successIndicator.waitFor({ state: 'visible', timeout: 10000 });
+                console.log('Download completed successfully');
             } catch (error) {
-                throw new Error('Success message did not appear within 10 seconds. ' +
-                              'Check if the download completed successfully.');
+                // If we can't find the success indicator, check the current state of the queue item
+                const currentState = await page.locator('#queue-list .queue-item').textContent();
+                throw new Error(`Download did not complete successfully. Current state: ${currentState}`);
             }
 
             // Verify the success message content
-            await expect(successLocator).toContainText('ดาวโหลดสำเร็จ!', { timeout: 5000 });
+            await expect(successIndicator).toContainText('ดาวน์โหลดสำเร็จ', { timeout: 5000 });
             
         } catch (error) {
             // Log all console messages when test fails
