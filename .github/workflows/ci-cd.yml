@@ -32,8 +32,9 @@ jobs:
   
   e2e-test:
     name: E2E Tests
+    needs: unit-test  # Wait for unit tests to complete first
     runs-on: ubuntu-latest
-    timeout-minutes: 10  # Reduced from 20 minutes
+    timeout-minutes: 10
     
     steps:
     - name: Checkout code
@@ -65,7 +66,7 @@ jobs:
       
   deploy:
     name: Deploy
-    needs: [unit-test, e2e-test]  # Wait for both test jobs to complete
+    needs: e2e-test  # Only need to wait for e2e-test, which already depends on unit-test
     timeout-minutes: 15
     # Only run on main/master branch
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
