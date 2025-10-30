@@ -71,7 +71,6 @@ jobs:
         npx playwright test \
           --config=playwright.ci.config.ts \
           --workers=4 \
-          --reporter=junit,html,github \
           --output=test-results/ || TEST_RESULT=$?
         
         # Always upload test results, even if tests fail

@@ -10,7 +10,8 @@ export default defineConfig({
     reporter: [
         ['list'],
         ['html', { open: 'never' }],
-        ['github']
+        ['github'],
+        ['junit', { outputFile: './test-results/junit/junit-report.xml' }]
     ],
     use: {
         baseURL: 'http://localhost:8080',
