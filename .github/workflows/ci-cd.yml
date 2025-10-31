@@ -35,6 +35,9 @@ jobs:
     needs: unit-test  # Wait for unit tests to complete first
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      checks: write
+      actions: read
     
     steps:
     - name: Checkout code
