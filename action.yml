@@ -9,7 +9,7 @@ inputs:
     default: 'playwright-report'
 
 runs:
-  using: 'node20'
+  using: 'node18'
   main: 'index.js'
 
 branding:
