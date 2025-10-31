@@ -88,11 +88,13 @@ jobs:
         require_tests: true
       continue-on-error: false
     
-    - name: Publish Playwright Report
+    - name: Upload Playwright Report
       if: always()
-      uses: ./
+      uses: actions/upload-artifact@v3
       with:
-        report-dir: 'playwright-report'
+        name: playwright-report
+        path: playwright-report/
+        retention-days: 7
       
   deploy:
     name: Deploy
