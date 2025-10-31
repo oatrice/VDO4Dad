@@ -38,6 +38,7 @@ jobs:
     permissions:
       checks: write
       actions: read
+      contents: read
     
     steps:
     - name: Checkout code
