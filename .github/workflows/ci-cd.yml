@@ -88,6 +88,14 @@ jobs:
         require_tests: true
       continue-on-error: false
     
+    - name: Debug Filesystem
+      if: always()
+      run: |
+        echo "Current working directory:"
+        pwd
+        echo "Listing all files in the workspace:"
+        ls -laR
+    
     - name: Upload Playwright Report
       if: always()
       uses: actions/upload-artifact@v3
