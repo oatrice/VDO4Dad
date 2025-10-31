@@ -1,6 +1,7 @@
 const core = require('@actions/core');
 const { exec } = require('@actions/exec');
-const artifact = require('@actions/artifact');
+const { uploadArtifact } = require('@actions/artifact');
+const { create } = require('@actions/glob');
 const { promises: fs } = require('fs');
 const path = require('path');
 
@@ -10,12 +11,15 @@ async function run() {
     const reportDir = core.getInput('report-dir');
     const artifactName = 'playwright-report';
     
-    // 1. Upload report as artifact
-    const artifactClient = artifact.create();
-    const uploadResponse = await artifactClient.uploadArtifact(
+    // 1. Find files to upload
+    const globber = await create(`${reportDir}/**`, { followSymbolicLinks: false });
+    const files = await globber.glob();
+
+    // 2. Upload report as artifact
+    const uploadResponse = await uploadArtifact(
       artifactName,
-      [`${reportDir}/**`],
-      path.dirname(reportDir),
+      files,
+      reportDir,
       { continueOnError: true }
     );
 
