@@ -957,7 +957,7 @@ app.get('/download', async (req, res) => {
                     logInfo('Download completed successfully', { downloadId, fileName: videoFile });
                     res.write(`data: ${JSON.stringify({ 
                         type: 'done', 
-                        message: 'ดาวโหลดสำเร็จ!',
+                        message: 'ดาวน์โหลดสำเร็จ!',
                         filePath: relativePath,
                         title: videoInfo.title
                     })}

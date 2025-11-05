@@ -120,8 +120,8 @@ test.describe('Download flow (mocked SSE)', () => {
                 throw new Error('Status item did not appear within 10 seconds. See logs for details.');
             }
 
-            // Wait for download to complete (check for success class or specific text)
-            const successIndicator = page.locator('#queue-list .queue-item.completed, #queue-list .queue-item:has-text("ดาวน์โหลดสำเร็จ")');
+            // Wait for download to complete (badge shows "สำเร็จ")
+            const successIndicator = page.locator('#queue-list .queue-item .status-badge.status-completed');
             try {
                 await successIndicator.waitFor({ state: 'visible', timeout: 10000 });
                 console.log('Download completed successfully');
@@ -132,7 +132,7 @@ test.describe('Download flow (mocked SSE)', () => {
             }
 
             // Verify the success message content
-            await expect(successIndicator).toContainText('ดาวน์โหลดสำเร็จ', { timeout: 5000 });
+            await expect(successIndicator).toContainText('สำเร็จ', { timeout: 5000 });
             
         } catch (error) {
             // Log all console messages when test fails
