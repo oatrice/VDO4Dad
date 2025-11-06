@@ -1,11 +1,101 @@
 import { test, expect, ConsoleMessage } from '@playwright/test';
+import * as fs from 'fs';
+import * as path from 'path';
 
 test.describe('Download flow (mocked SSE)', () => {
     test('shows success message with mocked EventSource', async ({ page }) => {
+        // Create test log file path
+        const testLogDir = path.join(__dirname, '..', 'logs');
+        const testLogFile = path.join(testLogDir, 'test-frontend.log');
+        
+        // Ensure logs directory exists
+        if (!fs.existsSync(testLogDir)) {
+            fs.mkdirSync(testLogDir, { recursive: true });
+        }
+        
+        // Helper function to write log with current timestamp
+        const writeTestLog = (message: string) => {
+            const timestamp = new Date().toISOString();
+            const logEntry = `[${timestamp}] [TEST] ${message}\n`;
+            fs.appendFileSync(testLogFile, logEntry, 'utf8');
+        };
+        
         // Collect all console logs for debugging
         const consoleMessages: string[] = [];
         page.on('console', (msg: ConsoleMessage) => {
-            consoleMessages.push(`[${msg.type()}] ${msg.text()}`);
+            const logMsg = `[${msg.type()}] ${msg.text()}`;
+            consoleMessages.push(logMsg);
+            writeTestLog(logMsg);
+        });
+
+        // Collect network requests for debugging
+        const networkRequests: string[] = [];
+        page.on('request', (request) => {
+            const url = request.url();
+            if (url.includes('/api/')) {
+                const logMsg = `[REQUEST] ${request.method()} ${url}`;
+                networkRequests.push(logMsg);
+                writeTestLog(logMsg);
+            }
+        });
+        page.on('response', (response) => {
+            const url = response.url();
+            if (url.includes('/api/')) {
+                const logMsg = `[RESPONSE] ${response.status()} ${response.statusText()} ${url}`;
+                networkRequests.push(logMsg);
+                writeTestLog(logMsg);
+            }
+        });
+        page.on('requestfailed', (request) => {
+            const url = request.url();
+            if (url.includes('/api/')) {
+                const logMsg = `[REQUEST FAILED] ${request.method()} ${url} - ${request.failure()?.errorText}`;
+                networkRequests.push(logMsg);
+                writeTestLog(logMsg);
+            }
+        });
+        
+        writeTestLog('Test started');
+
+        // Mock the /api/queue/getInfo endpoint
+        await page.route('**/api/queue/getInfo', async (route) => {
+            const request = route.request();
+            const postData = request.postDataJSON();
+            console.log('[MOCK] Intercepted /api/queue/getInfo request:', postData);
+            
+            // Mock response with queue item data
+            const mockQueueItem = {
+                id: `queue-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                url: postData.urls[0],
+                title: 'Mock Video Title',
+                thumbnail: 'https://via.placeholder.com/120x90',
+                status: 'PENDING',
+                progress: 0,
+                pid: null,
+                filePath: null,
+                error: null,
+                addedAt: new Date().toISOString(),
+                startedAt: null,
+                completedAt: null
+            };
+
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    success: true,
+                    summary: {
+                        total: 1,
+                        success: 1,
+                        failed: 0
+                    },
+                    results: [{
+                        url: postData.urls[0],
+                        success: true,
+                        item: mockQueueItem
+                    }]
+                })
+            });
         });
 
         // Set up mock EventSource with detailed logging
@@ -134,14 +224,26 @@ test.describe('Download flow (mocked SSE)', () => {
             // Verify the success message content
             await expect(successIndicator).toContainText('สำเร็จ', { timeout: 5000 });
             
+            writeTestLog('Test passed successfully');
+            
         } catch (error) {
+            // Log test failure
+            writeTestLog(`Test failed: ${error instanceof Error ? error.message : String(error)}`);
+            
             // Log all console messages when test fails
             console.error('Test failed. Console logs:');
             console.log(consoleMessages.join('\n'));
+            writeTestLog('Console logs:\n' + consoleMessages.join('\n'));
+            
+            // Log network requests when test fails
+            console.error('Network requests:');
+            console.log(networkRequests.join('\n'));
+            writeTestLog('Network requests:\n' + networkRequests.join('\n'));
             
             // Take a screenshot on failure
             await page.screenshot({ path: 'test-failure.png', fullPage: true });
             console.log('Screenshot saved as test-failure.png');
+            writeTestLog('Screenshot saved as test-failure.png');
             
             // Re-throw the error to fail the test
             throw error;
