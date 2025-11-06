@@ -34,9 +34,6 @@ test.describe('Queue flow (mocked SSE)', () => {
             fs.mkdirSync(testResultsDir, { recursive: true });
         }
 
-        // Start Playwright tracing to capture Network/Screenshots/DOM snapshots
-        await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
-
         // Collect network requests for debugging
         const networkRequests: string[] = [];
         page.on('request', (request) => {
@@ -261,11 +258,6 @@ test.describe('Queue flow (mocked SSE)', () => {
             
             // Re-throw the error to fail the test
             throw error;
-        } finally {
-            // Stop tracing and save to test-results/trace.zip
-            const tracePath = path.join(testResultsDir, 'trace.zip');
-            await context.tracing.stop({ path: tracePath });
-            writeTestLog('Trace saved as ' + tracePath);
         }
     });
 });

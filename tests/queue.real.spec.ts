@@ -8,9 +8,6 @@ test.describe('Queue flow (real APIs)', () => {
         const testResultsDir = path.join(__dirname, '..', 'test-results');
         if (!fs.existsSync(testResultsDir)) fs.mkdirSync(testResultsDir, { recursive: true });
 
-        // Start tracing
-        await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
-
         // Console logs
         const consoleMessages: string[] = [];
         page.on('console', (msg: ConsoleMessage) => consoleMessages.push(`[${msg.type()}] ${msg.text()}`));
@@ -53,8 +50,6 @@ test.describe('Queue flow (real APIs)', () => {
             fs.writeFileSync(path.join(testResultsDir, 'queue-real-network.log'), networkEvents.join('\n'));
             await page.screenshot({ path: path.join(testResultsDir, 'queue-real-failure.png'), fullPage: true });
             throw err;
-        } finally {
-            await context.tracing.stop({ path: path.join(testResultsDir, 'queue-real-trace.zip') });
         }
     });
 });
