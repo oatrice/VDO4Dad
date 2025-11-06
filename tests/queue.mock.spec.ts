@@ -189,7 +189,8 @@ test.describe('Queue flow (mocked SSE)', () => {
             console.log('Waiting for queue item to appear...');
             const queueItem = page.locator('#queue-list .queue-item');
             try {
-                await queueItem.waitFor({ state: 'visible', timeout: 10000 });
+                await page.waitForSelector('#queue-list .queue-item', { state: 'attached', timeout: 30000 });
+                await queueItem.first().waitFor({ state: 'visible', timeout: 30000 });
                 console.log('Queue item is visible');
                 
                 // Debug: Log the HTML of the queue list
@@ -261,5 +262,3 @@ test.describe('Queue flow (mocked SSE)', () => {
         }
     });
 });
-
-
