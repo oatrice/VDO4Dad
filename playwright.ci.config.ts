@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
     testDir: './tests',
-    testMatch: '**/*.mock.spec.ts',  // Only run mock tests
+    testMatch: ['**/*.spec.ts'],
     timeout: 120000,  // 2 minutes per test (reduced from 10 minutes)
     expect: { timeout: 30000 },  // 30 seconds for assertions (reduced from 3 minutes)
     retries: 1,  // Reduced from 2
