@@ -10,7 +10,13 @@
     "backend": "node server.js",
     "dev-full": "concurrently \"npm run backend\" \"npm run dev\"",
     "test": "node test-download3.js",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:all": "playwright test",
+    "test:e2e:mock": "playwright test --grep \"mock\"",
+    "test:e2e:real": "playwright test --grep \"real\"",
+    "test:e2e:queue": "playwright test queue.mock.spec.ts queue.real.spec.ts",
+    "test:e2e:queue:mock": "playwright test queue.mock.spec.ts",
+    "test:e2e:queue:real": "playwright test queue.real.spec.ts"
   },
   "keywords": [
     "offline",

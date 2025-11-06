@@ -2,7 +2,7 @@ import { test, expect, ConsoleMessage } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
-test.describe('Download flow (mocked SSE)', () => {
+test.describe('Queue flow (mocked SSE)', () => {
     test('shows success message with mocked EventSource', async ({ page, context }) => {
         // Create test log file path
         const testLogDir = path.join(__dirname, '..', 'logs');
@@ -119,7 +119,7 @@ test.describe('Download flow (mocked SSE)', () => {
             class MockEventSource {
                 onmessage: ((event: MessageEvent) => void) | null = null;
                 onerror: ((event: Event) => void) | null = null;
-                private timeoutIds: NodeJS.Timeout[] = [];
+                private timeoutIds: Array<ReturnType<typeof setTimeout>> = [];
                 private url: string;
 
                 constructor(url: string) {
