@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 test.describe('Download flow (mocked SSE)', () => {
-    test('shows success message with mocked EventSource', async ({ page }) => {
+    test('shows success message with mocked EventSource', async ({ page, context }) => {
         // Create test log file path
         const testLogDir = path.join(__dirname, '..', 'logs');
         const testLogFile = path.join(testLogDir, 'test-frontend.log');
@@ -27,6 +27,15 @@ test.describe('Download flow (mocked SSE)', () => {
             consoleMessages.push(logMsg);
             writeTestLog(logMsg);
         });
+
+        // Ensure test-results directory exists for artifacts (screenshots/trace)
+        const testResultsDir = path.join(__dirname, '..', 'test-results');
+        if (!fs.existsSync(testResultsDir)) {
+            fs.mkdirSync(testResultsDir, { recursive: true });
+        }
+
+        // Start Playwright tracing to capture Network/Screenshots/DOM snapshots
+        await context.tracing.start({ screenshots: true, snapshots: true, sources: true });
 
         // Collect network requests for debugging
         const networkRequests: string[] = [];
@@ -224,6 +233,10 @@ test.describe('Download flow (mocked SSE)', () => {
             // Verify the success message content
             await expect(successIndicator).toContainText('สำเร็จ', { timeout: 5000 });
             
+            // Take a success screenshot
+            await page.screenshot({ path: path.join(testResultsDir, 'test-success.png'), fullPage: true });
+            writeTestLog('Screenshot saved as test-results/test-success.png');
+            
             writeTestLog('Test passed successfully');
             
         } catch (error) {
@@ -241,12 +254,18 @@ test.describe('Download flow (mocked SSE)', () => {
             writeTestLog('Network requests:\n' + networkRequests.join('\n'));
             
             // Take a screenshot on failure
-            await page.screenshot({ path: 'test-failure.png', fullPage: true });
-            console.log('Screenshot saved as test-failure.png');
-            writeTestLog('Screenshot saved as test-failure.png');
+            const failureShot = path.join(testResultsDir, 'test-failure.png');
+            await page.screenshot({ path: failureShot, fullPage: true });
+            console.log('Screenshot saved as ' + failureShot);
+            writeTestLog('Screenshot saved as ' + failureShot);
             
             // Re-throw the error to fail the test
             throw error;
+        } finally {
+            // Stop tracing and save to test-results/trace.zip
+            const tracePath = path.join(testResultsDir, 'trace.zip');
+            await context.tracing.stop({ path: tracePath });
+            writeTestLog('Trace saved as ' + tracePath);
         }
     });
 });
