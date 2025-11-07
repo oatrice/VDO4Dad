@@ -93,6 +93,7 @@ jobs:
   deploy-pages:
     needs: e2e
     runs-on: ubuntu-latest
+    if: ${{ always() }}
     steps:
       - name: Deploy to GitHub Pages
         id: deploy
