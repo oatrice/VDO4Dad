@@ -16,7 +16,7 @@ export default defineConfig({
     use: {
         baseURL: 'http://localhost:8080',
         headless: true,
-        trace: 'on-first-retry',  // Only keep traces for failed tests
+        trace: 'on',  // Record traces for all tests
         screenshot: 'only-on-failure',
         video: 'off',  // Disable video recording to speed up tests
         viewport: { width: 1280, height: 800 }

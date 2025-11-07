@@ -104,6 +104,15 @@ jobs:
         name: playwright-report
         path: playwright-report/
         retention-days: 7
+    
+    - name: Upload Playwright Traces
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-traces
+        path: test-results/**/*.zip
+        retention-days: 7
+        if-no-files-found: ignore
       
   deploy:
     name: Deploy
