@@ -4,9 +4,20 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    outputs:
+      has_trace: ${{ steps.prepare_pages.outputs.has_trace }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,6 +48,29 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Prepare Pages artifact (latest trace.zip)
+        id: prepare_pages
+        if: ${{ always() }}
+        run: |
+          mkdir -p public
+          set +e
+          LATEST=$(ls -t test-results/**/trace.zip 2>/dev/null | head -n1)
+          set -e
+          if [ -n "$LATEST" ]; then
+            cp "$LATEST" public/trace.zip
+            echo "has_trace=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No trace.zip found; creating placeholder"
+            echo "No traces were produced in this run." > public/README.txt
+            echo "has_trace=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload Pages artifact
+        if: ${{ always() }}
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
       - name: Add artifacts link to summary
         if: ${{ always() }}
         env:
@@ -55,5 +89,32 @@ jobs:
             echo 'npx playwright show-trace trace.zip';
             echo '```';
           } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-pages:
+    needs: e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: Add online viewer link to summary
+        if: ${{ needs.e2e.outputs.has_trace == 'true' }}
+        env:
+          PAGES_URL: ${{ steps.deploy.outputs.page_url }}
+        run: |
+          TRACE_URL="${PAGES_URL}trace.zip"
+          VIEW_URL="https://trace.playwright.dev/?trace=${TRACE_URL}"
+          {
+            echo "## Playwright trace (hosted)";
+            echo "";
+            echo "- [Open in trace viewer](${VIEW_URL})";
+            echo "- [Direct trace.zip](${TRACE_URL})";
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Note when no trace available
+        if: ${{ needs.e2e.outputs.has_trace != 'true' }}
+        run: |
+          echo "No Playwright trace.zip to publish for this run." >> "$GITHUB_STEP_SUMMARY"
 
 
