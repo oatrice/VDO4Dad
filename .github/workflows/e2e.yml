@@ -28,6 +28,7 @@ jobs:
           npm run test:e2e:queue
 
       - name: Upload Playwright traces
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces
@@ -37,6 +38,7 @@ jobs:
           retention-days: 7
 
       - name: Add artifacts link to summary
+        if: ${{ always() }}
         env:
           REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
