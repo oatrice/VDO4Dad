@@ -525,6 +525,17 @@ h1 {
     font-size: 0.8rem;
     font-weight: 600;
     text-transform: uppercase;
+    position: relative;
+    overflow: hidden;
+}
+
+@keyframes glimmer {
+    0% {
+        background-position: 200% 0;
+    }
+    100% {
+        background-position: -100% 0;
+    }
 }
 
 .status-pending {
@@ -533,8 +544,12 @@ h1 {
 }
 
 .status-downloading {
-    background-color: #cfe2ff;
+    background: linear-gradient(90deg, #cfe2ff, #e7f0ff, #cfe2ff, #e7f0ff);
+    background-size: 200% 100%;
     color: #084298;
+    animation: glimmer 2.5s linear infinite;
+    position: relative;
+    overflow: hidden;
 }
 
 .status-paused {

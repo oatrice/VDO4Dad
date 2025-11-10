@@ -1,0 +1,134 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'master'
+      - 'feature/**'  # Any branch that starts with 'feature/'
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  unit-test:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run unit tests
+      run: npm test
+  
+  e2e-test:
+    name: E2E Tests
+    needs: unit-test  # Wait for unit tests to complete first
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      checks: write
+      actions: read
+      contents: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: |
+        npm ci
+        npm install -D @playwright/test
+        npx playwright install --with-deps chromium
+    
+    - name: Cache Playwright browsers
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/ms-playwright
+          ~/.npm
+        key: ${{ runner.os }}-browsers-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-browsers-
+    
+    - name: Run Playwright tests with JUnit and HTML reports
+      id: playwright-test
+      run: |
+        set -e  # Exit immediately if a command exits with a non-zero status
+        
+        # Run tests and capture the exit code
+        npx playwright test \
+          --config=playwright.ci.config.ts \
+          --workers=4 \
+          --output=test-results/ || TEST_RESULT=$?
+        
+        # Always upload test results, even if tests fail
+        exit ${TEST_RESULT:-0}
+    
+    - name: Publish Test Results
+      if: always()
+      uses: mikepenz/action-junit-report@v4
+      with:
+        report_paths: 'test-results/junit/*.xml'
+        fail_on_failure: true
+        require_tests: true
+      continue-on-error: false
+    
+    - name: Upload Playwright Report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-report
+        path: playwright-report/
+        retention-days: 7
+      
+  deploy:
+    name: Deploy
+    needs: e2e-test  # Only need to wait for e2e-test, which already depends on unit-test
+    timeout-minutes: 15
+    # Only run on main/master branch
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18.x'
+    
+    - name: Install dependencies
+      run: npm ci --production
+      
+    # Add deployment steps here based on your hosting platform
+    # For example, for Vercel, Netlify, or GitHub Pages
+    - name: Deploy to production
+      run: echo "Add your deployment steps here"
+      # Example for GitHub Pages:
+      # run: |
+      #   npm run build
+      #   cd build
+      #   touch .nojekyll
+      #   git init
+      #   git config user.name "GitHub Actions"
+      #   git config user.email "actions@github.com"
+      #   git add .
+      #   git commit -m "Deploy to GitHub Pages"
+      #   git push --force --quiet "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" main:gh-pages

@@ -64,7 +64,7 @@ async function testDownload() {
                         }
                     }
                     // Check for completion message
-                    if (text.includes('ดาวโหลดสำเร็จ') || text.includes('สำเร็จ')) {
+                    if (text.includes('ดาวน์โหลดสำเร็จ') || text.includes('สำเร็จ')) {
                         console.log('✅ Download completed!');
                         progressComplete = true;
                         clearInterval(progressInterval);

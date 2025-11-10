@@ -15,3 +15,5 @@ src/videos
 test-results
 logs
 src/data/queue_data.json
+playwright-report
+test-failure.png

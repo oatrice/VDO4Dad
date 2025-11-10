@@ -957,7 +957,7 @@ app.get('/download', async (req, res) => {
                     logInfo('Download completed successfully', { downloadId, fileName: videoFile });
                     res.write(`data: ${JSON.stringify({ 
                         type: 'done', 
-                        message: 'ดาวโหลดสำเร็จ!',
+                        message: 'ดาวน์โหลดสำเร็จ!',
                         filePath: relativePath,
                         title: videoInfo.title
                     })}
@@ -1381,7 +1381,7 @@ app.delete('/api/queue', (req, res) => {
 });
 
 // Add multiple items to queue (batch)
-app.post('/api/queue/batch', async (req, res) => {
+app.post('/api/queue/getInfo', async (req, res) => {
     try {
         const { urls } = req.body;
         

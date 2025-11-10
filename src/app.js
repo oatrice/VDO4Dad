@@ -428,7 +428,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let successCount = 0;
         
         try {
-            const response = await fetch('http://localhost:3000/api/queue/batch', {
+            const response = await fetch('http://localhost:3000/api/queue/getInfo', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'

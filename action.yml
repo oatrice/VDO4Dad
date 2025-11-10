@@ -1,0 +1,17 @@
+name: 'Publish Playwright Report'
+description: 'Upload Playwright HTML report and add link to GitHub Actions summary'
+author: 'GitHub Actions'
+
+inputs:
+  report-dir:
+    description: 'Directory containing the Playwright HTML report'
+    required: true
+    default: 'playwright-report'
+
+runs:
+  using: 'node18'
+  main: 'index.js'
+
+branding:
+  icon: 'clipboard'
+  color: 'blue'
